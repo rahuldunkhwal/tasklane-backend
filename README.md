@@ -99,6 +99,11 @@ A board is `{id, title, createdAt, updatedAt}`. Every query includes the owner, 
 
 A task is `{id, boardId, title, description, priority, dueDate, completed, order, createdAt, updatedAt}`.
 
+**Dashboard:** `GET /api/tasks/stats` → `200 {total, completed, overdue}` for the user's **own** boards (boards shared
+with them don't count: that's someone else's work). Computed by one MongoDB aggregation (`$match` → `$group` with
+`$sum`/`$cond`). Overdue = not completed **and** `dueDate` is a date **and** `dueDate < now` (MongoDB sorts `null`
+below every date, so tasks without a due date are excluded explicitly).
+
 - `priority`: `low` | `medium` | `high` (default `medium`). Title 1–200 chars, description up to 2000.
 - `dueDate`: an ISO date-time or `null`. The frontend sends the **end of the chosen day in the user's time zone**, so
   a task is overdue when `!completed && dueDate < now`. Past dates are accepted.
