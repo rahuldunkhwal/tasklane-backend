@@ -43,18 +43,36 @@ curl http://localhost:4000/api/health
 
 Validated at startup by `src/config/env.ts`: the server refuses to start if any value is missing or invalid.
 
-| Variable        | Example                               | Notes                                    |
-| --------------- | ------------------------------------- | ---------------------------------------- |
-| `NODE_ENV`      | `development`                         | `development` \| `test` \| `production`  |
-| `PORT`          | `4000`                                | Defaults to 4000                         |
-| `MONGODB_URI`   | `mongodb://127.0.0.1:27017/taskboard` | Required. Atlas uses `mongodb+srv://...` |
-| `CLIENT_ORIGIN` | `http://localhost:5173`               | Frontend origin allowed by CORS          |
+| Variable         | Example                               | Notes                                                                                        |
+| ---------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `NODE_ENV`       | `development`                         | `development` \| `test` \| `production`                                                      |
+| `PORT`           | `4000`                                | Defaults to 4000                                                                             |
+| `MONGODB_URI`    | `mongodb://127.0.0.1:27017/taskboard` | Required. Atlas uses `mongodb+srv://...`                                                     |
+| `CLIENT_ORIGIN`  | `http://localhost:5173`               | Frontend origin allowed by CORS                                                              |
+| `JWT_SECRET`     | 96 random hex characters              | Required, min 32 chars. Signs login JWTs                                                     |
+| `RESEND_API_KEY` | `re_...`                              | Optional in development (emails are printed in the terminal instead). Required in production |
+| `MAIL_FROM`      | `Task Board <onboarding@resend.dev>`  | Sender address. Without a verified domain, Resend only delivers to your own account email    |
 
 ## API
 
-| Method | Path          | Description                                               |
-| ------ | ------------- | --------------------------------------------------------- |
-| GET    | `/api/health` | `200 {status:"ok", db:"up"}` or `503 {status:"degraded"}` |
+| Method | Path                        | Description                                                                                                               |
+| ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/health`               | `200 {status:"ok", db:"up"}` or `503 {status:"degraded"}`                                                                 |
+| POST   | `/api/auth/signup`          | Body `{name, email, password}` → `201 {user}` + auth cookie. `409 EMAIL_TAKEN`                                            |
+| POST   | `/api/auth/login`           | Body `{email, password}` → `200 {user}` + auth cookie. `401 INVALID_CREDENTIALS`                                          |
+| GET    | `/api/auth/me`              | Requires login → `200 {user}`. `401 UNAUTHORIZED`                                                                         |
+| POST   | `/api/auth/logout`          | Ends the session and clears the cookie → `204` (also when already logged out)                                             |
+| POST   | `/api/auth/forgot-password` | Body `{email}` → always `200 {message}` (same answer whether or not the account exists); emails a reset link valid 15 min |
+| POST   | `/api/auth/reset-password`  | Body `{token, password}` → `200 {message}`, logs out all devices. `400 INVALID_RESET_TOKEN`                               |
+
+**Authentication:** a JWT in an `httpOnly`, `SameSite=Lax` cookie named `token` (7 days, `Secure` in production).
+The JWT holds the user id and a session id. Each login creates a document in the `sessions` collection; logout
+deletes it, so a token stops working immediately. A TTL index removes expired sessions automatically.
+
+**Password rules:** 8–72 characters, at least one letter and one number.
+
+**Password reset:** the emailed link points to the frontend (`CLIENT_ORIGIN/reset-password?token=...`). Only a
+SHA-256 hash of the token is stored; it expires after 15 minutes, works once, and a newer request replaces it.
 
 ### Error format
 
@@ -71,7 +89,8 @@ Every error has the same shape:
 ```
 
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
-`INVALID_ID`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `INTERNAL_ERROR`.
+`INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
+`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `INTERNAL_ERROR`.
 
 ## Project structure
 
@@ -81,7 +100,15 @@ src/
 ├─ app.ts                 builds the Express app (middleware + routes), no listen()
 ├─ config/                env validation, database connection
 ├─ routes/index.ts        mounts every feature router under /api
-├─ modules/<feature>/     routes (later: controllers, schemas) per feature
-├─ middleware/            notFound, errorHandler (later: auth, validation)
-└─ utils/AppError.ts      error with HTTP status + stable code
+├─ modules/<feature>/     one folder per feature (health, auth, users, ...)
+├─ middleware/            notFound, errorHandler, validate, requireAuth
+├─ types/express.d.ts     adds req.user / req.sessionId to Express's Request type
+└─ utils/                 AppError (HTTP status + stable code), password (bcrypt), email (Resend)
+
+modules/<feature>/
+├─ <feature>.routes.ts      URL → middleware → controller
+├─ <feature>.controller.ts  HTTP only: read req, call service, send res
+├─ <feature>.service.ts     business logic, throws AppError, never touches req/res
+├─ <feature>.schema.ts      zod input rules
+└─ <entity>.model.ts        Mongoose schema
 ```
