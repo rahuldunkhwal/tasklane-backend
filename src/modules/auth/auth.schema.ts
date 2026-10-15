@@ -37,4 +37,12 @@ export const signupSchema = z.object({
   password: passwordRule,
 });
 
+// Login only checks that a password was typed: strength rules apply when a password is
+// created, not when it's used (otherwise users with older, weaker passwords couldn't log in).
+export const loginSchema = z.object({
+  email: emailRule,
+  password: requiredString('Password').min(1, 'Password is required'),
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
