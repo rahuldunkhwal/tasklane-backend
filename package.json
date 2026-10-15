@@ -1,0 +1,16 @@
+{
+  "name": "taskboard-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Task board REST API: Express 5 + TypeScript + MongoDB (Mongoose)",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}
