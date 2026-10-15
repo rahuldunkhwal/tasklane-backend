@@ -1,32 +1,41 @@
-import { Resend } from 'resend';
+import sgMail from '@sendgrid/mail';
 import { env } from '../config/env.js';
-
-const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
 export type Email = { to: string; subject: string; html: string; text: string };
 
+// Configure the SendGrid client once, only if a key is present.
+const hasKey = Boolean(env.SENDGRID_API_KEY);
+if (env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(env.SENDGRID_API_KEY);
+}
+
 export async function sendEmail(email: Email) {
-  if (!resend) {
+  if (!hasKey) {
     // Printing reset links in production logs would let anyone with log access reset passwords
     if (env.NODE_ENV === 'production') {
-      throw new Error('RESEND_API_KEY is not set: cannot send emails in production');
+      throw new Error('SENDGRID_API_KEY is not set: cannot send emails in production');
     }
     // Development without a key (e.g. a reviewer running the project): print instead of sending
     console.log(
-      `\n[email not sent: RESEND_API_KEY is empty]\nTo: ${email.to}\nSubject: ${email.subject}\n${email.text}\n`,
+      `\n[email not sent: SENDGRID_API_KEY is empty]\nTo: ${email.to}\nSubject: ${email.subject}\n${email.text}\n`,
     );
     return;
   }
 
-  // Resend doesn't throw when sending fails: it returns { error }, so we have to check it ourselves
-  const { error } = await resend.emails.send({
-    from: env.MAIL_FROM,
-    to: [email.to],
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
-  if (error) {
-    throw new Error(`Resend failed to send email: ${error.message}`);
+  try {
+    await sgMail.send({
+      to: email.to,
+      from: env.MAIL_FROM, // must match a sender verified in SendGrid, or it's rejected (403)
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+    });
+  } catch (error) {
+    // @sendgrid/mail throws on failure; its response body carries the real reason
+    // (e.g. "The from address does not match a verified Sender Identity").
+    const reason =
+      (error as { response?: { body?: { errors?: Array<{ message?: string }> } } }).response?.body
+        ?.errors?.[0]?.message ?? (error instanceof Error ? error.message : 'unknown error');
+    throw new Error(`SendGrid failed to send email: ${reason}`, { cause: error });
   }
 }

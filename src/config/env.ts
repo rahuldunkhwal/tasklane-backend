@@ -11,15 +11,22 @@ const envSchema = z.object({
   MONGODB_URI: z
     .string({ error: 'is required' })
     .regex(/^mongodb(\+srv)?:\/\//, 'must start with mongodb:// or mongodb+srv://'),
-  CLIENT_ORIGIN: z.url().default('http://localhost:5173'),
+  // The frontend's origin. Drives CORS AND the links in emails/invites (reset + invite links).
+  // In production set it to the deployed frontend URL. A trailing slash is stripped so links
+  // never come out as "https://app.com//invite/...".
+  CLIENT_ORIGIN: z
+    .url()
+    .default('http://localhost:5173')
+    .transform((value) => value.replace(/\/+$/, '')),
   // Signs login tokens. Anyone who knows it can create a valid token for any user, so it must be long and random.
   JWT_SECRET: z
     .string({ error: 'is required' })
     .min(32, 'must be at least 32 characters (generate a random one)'),
   // Optional in development: without a key, emails are printed in the terminal instead of sent
-  RESEND_API_KEY: z.string().optional(),
-  // Without a verified domain, Resend only allows this sender (and only delivers to your own account email)
-  MAIL_FROM: z.string().default('Task Board <onboarding@resend.dev>'),
+  SENDGRID_API_KEY: z.string().optional(),
+  // SendGrid "Single Sender" only delivers from a verified address, so this MUST match
+  // the exact sender email you verified in SendGrid (e.g. your own Gmail).
+  MAIL_FROM: z.string().default('Task Board <your-verified-sender@example.com>'),
 });
 
 const parsed = envSchema.safeParse(process.env);
