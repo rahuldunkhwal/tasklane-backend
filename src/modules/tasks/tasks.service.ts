@@ -53,6 +53,50 @@ export async function listTasks(userId: string, filters: TaskFilters = {}) {
   return TaskModel.find(query).sort({ board: 1, order: 1 });
 }
 
+export type TaskStats = { total: number; completed: number; overdue: number };
+
+// Dashboard counts in ONE aggregation, i.e. one trip to the database, with MongoDB doing the
+// counting (no task data is sent to Node). Only the user's OWN boards count: boards shared
+// with them are someone else's work.
+export async function getTaskStats(userId: string): Promise<TaskStats> {
+  const boardIds = await listOwnBoardIds(userId); // already ObjectIds: aggregate() doesn't convert types
+  const now = new Date();
+
+  const [stats] = await TaskModel.aggregate<TaskStats>([
+    // Stage 1: keep only this user's tasks (uses the { board, order } index)
+    { $match: { board: { $in: boardIds } } },
+    // Stage 2: squash all of them into ONE result, adding 1 or 0 per task
+    {
+      $group: {
+        _id: null,
+        total: { $sum: 1 },
+        completed: { $sum: { $cond: ['$completed', 1, 0] } },
+        overdue: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$completed', false] },
+                  // In MongoDB comparisons null is "smaller" than every date, so without this
+                  // check, tasks with NO due date would be counted as overdue
+                  { $eq: [{ $type: '$dueDate' }, 'date'] },
+                  { $lt: ['$dueDate', now] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    { $project: { _id: 0, total: 1, completed: 1, overdue: 1 } },
+  ]);
+
+  // No tasks at all → no group is produced → report zeros
+  return stats ?? { total: 0, completed: 0, overdue: 0 };
+}
+
 // A task counts only if it exists AND its board belongs to this user.
 // Otherwise "not found" (404), which doesn't reveal that the task exists.
 async function getOwnTask(userId: string, taskId: string) {

@@ -17,6 +17,11 @@ export const list: RequestHandler = async (req, res) => {
   res.json({ tasks: tasks.map(toTaskDto) });
 };
 
+// Dashboard summary: { total, completed, overdue }
+export const stats: RequestHandler = async (req, res) => {
+  res.json(await tasksService.getTaskStats(getAuthUser(req).id));
+};
+
 export const create: RequestHandler = async (req, res) => {
   const task = await tasksService.createTask(getAuthUser(req).id, req.body as CreateTaskInput);
   res.status(201).json({ task: toTaskDto(task) });
