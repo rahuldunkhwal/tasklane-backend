@@ -1,6 +1,6 @@
-# Task Board API (backend)
+# Tasklane API (backend)
 
-REST API for the Task Board app: Express 5, TypeScript, MongoDB (Mongoose).
+REST API for the Tasklane app: Express 5, TypeScript, MongoDB (Mongoose).
 
 > The frontend lives in a separate repository. This README grows with each phase.
 
@@ -51,7 +51,7 @@ Validated at startup by `src/config/env.ts`: the server refuses to start if any 
 | `CLIENT_ORIGIN`  | `http://localhost:5173`               | Frontend origin allowed by CORS                                                              |
 | `JWT_SECRET`     | 96 random hex characters              | Required, min 32 chars. Signs login JWTs                                                     |
 | `SENDGRID_API_KEY` | `SG....`                            | Optional in development (emails are printed in the terminal instead). Required in production |
-| `MAIL_FROM`      | `Task Board <you@gmail.com>`          | Sender address. Must exactly match a sender verified in SendGrid (Single Sender)             |
+| `MAIL_FROM`      | `Tasklane <you@gmail.com>`            | Sender address. Must exactly match a sender verified in SendGrid (Single Sender)             |
 
 ## API
 

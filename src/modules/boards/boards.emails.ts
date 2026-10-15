@@ -1,3 +1,4 @@
+import { escapeHtml, renderEmailHtml } from '../../utils/email-template.js';
 import type { Email } from '../../utils/email.js';
 
 // Sent when a board owner invites someone (usually a person without an account yet).
@@ -8,21 +9,28 @@ export function boardInviteEmail(
   inviterName: string,
   boardTitle: string,
 ): Email {
+  // inviterName and boardTitle come from users, so escape them before putting them in HTML.
+  const safeInviter = escapeHtml(inviterName);
+  const safeTitle = escapeHtml(boardTitle);
   return {
     to,
-    subject: `${inviterName} shared "${boardTitle}" with you on Task Board`,
+    subject: `${inviterName} shared "${boardTitle}" with you on Tasklane`,
     text: [
-      `${inviterName} shared the board "${boardTitle}" with you on Task Board (view-only).`,
+      `${inviterName} shared the board "${boardTitle}" with you on Tasklane (view-only).`,
       '',
       'Open this link to view it (sign up or log in first if you need to):',
       link,
       '',
       "If you weren't expecting this, you can ignore this email.",
     ].join('\n'),
-    html: `
-      <p><strong>${inviterName}</strong> shared the board "<strong>${boardTitle}</strong>" with you on Task Board (view-only).</p>
-      <p><a href="${link}">Open the board</a> (sign up or log in first if you need to).</p>
-      <p>If you weren't expecting this, you can ignore this email.</p>
-    `,
+    html: renderEmailHtml({
+      heading: `${inviterName} shared a board with you`,
+      paragraphs: [
+        `<strong>${safeInviter}</strong> shared the board "<strong>${safeTitle}</strong>" with you on Tasklane (view-only).`,
+        'Sign up or log in first if you need to, then open the board below.',
+      ],
+      button: { label: 'Open the board', href: link },
+      footnote: "If you weren't expecting this, you can ignore this email.",
+    }),
   };
 }

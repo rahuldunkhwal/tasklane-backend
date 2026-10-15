@@ -8,6 +8,11 @@ const userSchema = new Schema(
     // lowercase: Rahul@Test.com and rahul@test.com become the same account.
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
 
+    // Profile photo: the delivered Cloudinary URL (sent to the client) and the public_id used to
+    // delete/overwrite it (kept server-side via select:false, so it never leaks).
+    avatarUrl: { type: String, default: null },
+    avatarPublicId: { type: String, select: false, default: null },
+
     // select: false = never loaded by queries unless explicitly asked for with .select('+passwordHash')
     passwordHash: { type: String, required: true, select: false },
 

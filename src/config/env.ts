@@ -26,7 +26,12 @@ const envSchema = z.object({
   SENDGRID_API_KEY: z.string().optional(),
   // SendGrid "Single Sender" only delivers from a verified address, so this MUST match
   // the exact sender email you verified in SendGrid (e.g. your own Gmail).
-  MAIL_FROM: z.string().default('Task Board <your-verified-sender@example.com>'),
+  MAIL_FROM: z.string().default('Tasklane <your-verified-sender@example.com>'),
+  // Cloudinary (profile avatars). All optional: without them the app still boots and avatar
+  // uploads simply return a clear "not configured" error.
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

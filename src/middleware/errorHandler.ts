@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler } from 'express';
 import mongoose from 'mongoose';
+import multer from 'multer';
 import { ZodError } from 'zod';
 import { AppError, type ErrorDetail } from '../utils/AppError.js';
 
@@ -21,6 +22,14 @@ export function toErrorResponse(err: unknown) {
   // 1. Errors we threw on purpose
   if (err instanceof AppError) {
     return reply(err.statusCode, err.code, err.message, err.details);
+  }
+
+  // 1b. A file upload (multer) was rejected — most often too large
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return reply(413, 'PAYLOAD_TOO_LARGE', 'The image is too large (max 2 MB)');
+    }
+    return reply(400, 'INVALID_UPLOAD', err.message);
   }
 
   // 2. Request validation failed (zod schemas, used from Phase 1)

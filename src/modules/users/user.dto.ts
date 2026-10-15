@@ -6,6 +6,7 @@ export type PublicUser = {
   id: string;
   name: string;
   email: string;
+  avatarUrl: string | null;
   createdAt: Date;
 };
 
@@ -14,6 +15,7 @@ export function toPublicUser(user: UserDocument): PublicUser {
     id: user.id,
     name: user.name,
     email: user.email,
+    avatarUrl: user.avatarUrl ?? null,
     createdAt: user.createdAt,
   };
 }
