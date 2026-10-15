@@ -1,14 +1,5 @@
 import { z } from 'zod';
-
-// "is required" when the field is missing or null, "must be text" when it's another type (e.g. an object)
-function requiredString(field: string) {
-  return z.string({
-    error: (issue) =>
-      issue.input === undefined || issue.input === null
-        ? `${field} is required`
-        : `${field} must be text`,
-  });
-}
+import { requiredString } from '../../utils/zod.js';
 
 const nameRule = requiredString('Name')
   .trim()
