@@ -1,7 +1,8 @@
 import type { RequestHandler } from 'express';
-import { getAuthUser } from '../../middleware/requireAuth.js';
+import { getAuthSessionId, getAuthUser } from '../../middleware/requireAuth.js';
 import { toPublicUser } from '../users/user.dto.js';
 import type {
+  ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
   ResetPasswordInput,
@@ -36,6 +37,15 @@ export const logout: RequestHandler = async (req, res) => {
   await authService.endSession(typeof token === 'string' ? token : undefined);
   clearAuthCookie(res);
   res.status(204).end(); // 204 = success, nothing to send back
+};
+
+export const changePassword: RequestHandler = async (req, res) => {
+  await authService.changePassword(
+    getAuthUser(req).id,
+    getAuthSessionId(req), // this device stays logged in
+    req.body as ChangePasswordInput,
+  );
+  res.json({ message: 'Your password has been changed. Your other devices have been logged out.' });
 };
 
 export const forgotPassword: RequestHandler = async (req, res) => {

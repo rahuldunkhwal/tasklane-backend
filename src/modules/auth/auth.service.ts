@@ -5,7 +5,12 @@ import { sendEmail } from '../../utils/email.js';
 import { hashPassword, verifyPassword } from '../../utils/password.js';
 import { UserModel } from '../users/user.model.js';
 import { passwordResetEmail } from './auth.emails.js';
-import type { LoginInput, ResetPasswordInput, SignupInput } from './auth.schema.js';
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  ResetPasswordInput,
+  SignupInput,
+} from './auth.schema.js';
 import {
   SESSION_SECONDS,
   signAuthToken,
@@ -64,6 +69,31 @@ export async function endSession(token: string | undefined) {
   if (payload) {
     await SessionModel.deleteOne({ _id: payload.sessionId, user: payload.userId });
   }
+}
+
+// ---------- Change password (logged in) ----------
+
+// Other devices are logged out (whoever knew the old password loses access), but THIS session
+// stays, so the user isn't thrown out of the page they're on.
+export async function changePassword(
+  userId: string,
+  currentSessionId: string,
+  input: ChangePasswordInput,
+) {
+  const user = await UserModel.findById(userId).select('+passwordHash');
+  if (!user || !(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    // 400, NOT 401: the frontend treats every 401 as "session expired" and logs the user out,
+    // which is not what should happen after a typo in the current password
+    throw new AppError(400, 'INVALID_CURRENT_PASSWORD', 'Current password is incorrect');
+  }
+
+  user.passwordHash = await hashPassword(input.newPassword);
+  // A reset link that's still waiting in an inbox stops working too (undefined = removed on save)
+  user.passwordResetTokenHash = undefined;
+  user.passwordResetExpires = undefined;
+  await user.save();
+
+  await SessionModel.deleteMany({ user: user._id, _id: { $ne: currentSessionId } });
 }
 
 // ---------- Forgot / reset password ----------
