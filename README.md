@@ -50,8 +50,8 @@ Validated at startup by `src/config/env.ts`: the server refuses to start if any 
 | `MONGODB_URI`    | `mongodb://127.0.0.1:27017/taskboard` | Required. Atlas uses `mongodb+srv://...`                                                     |
 | `CLIENT_ORIGIN`  | `http://localhost:5173`               | Frontend origin allowed by CORS                                                              |
 | `JWT_SECRET`     | 96 random hex characters              | Required, min 32 chars. Signs login JWTs                                                     |
-| `RESEND_API_KEY` | `re_...`                              | Optional in development (emails are printed in the terminal instead). Required in production |
-| `MAIL_FROM`      | `Task Board <onboarding@resend.dev>`  | Sender address. Without a verified domain, Resend only delivers to your own account email    |
+| `SENDGRID_API_KEY` | `SG....`                            | Optional in development (emails are printed in the terminal instead). Required in production |
+| `MAIL_FROM`      | `Task Board <you@gmail.com>`          | Sender address. Must exactly match a sender verified in SendGrid (Single Sender)             |
 
 ## API
 
@@ -97,9 +97,19 @@ with them. Deleting a board also deletes its tasks (and its shares).
 
 | Method | Path                             | Description                                                                                                           |
 | ------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}]}`                                                                  |
+| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], inviteLink}`                                                      |
 | POST   | `/api/boards/:id/shares`         | Owner only. Body `{email}` → `201 {shares}`. `404 USER_NOT_FOUND`, `409 ALREADY_SHARED`, `400 CANNOT_SHARE_WITH_SELF` |
 | DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`. `404 SHARE_NOT_FOUND`                                                                             |
+| POST   | `/api/boards/:id/invites`        | Owner only. Body `{email}` → `200 {message}`: emails that address the board's invite link                            |
+
+**Invite links (join by link, for people who may not have an account yet):**
+
+| Method | Path                         | Description                                                                                 |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------------- |
+| GET    | `/api/invites/:token`        | **Public** → `200 {boardTitle, inviterName}`. `404 INVALID_INVITE`                          |
+| POST   | `/api/invites/:token/accept` | Requires login → `200 {boardId}`: joins the board as a viewer (idempotent; no-op for owner) |
+
+The invite link (`CLIENT_ORIGIN/invite/<token>`) is a **bearer token** on the board — anyone with it can join as a viewer, like a Trello share link. It's created the first time the owner opens Share. Access is granted only when a logged-in user accepts (we don't auto-grant by email, since sign-up doesn't verify email ownership).
 
 **Access rules** (one place: `getVisibleBoard` / `getOwnBoard` in `boards.service.ts`):
 
@@ -169,7 +179,7 @@ Every error has the same shape:
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
 `INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
 `INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `INVALID_CURRENT_PASSWORD`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`,
-`USER_NOT_FOUND`, `ALREADY_SHARED`, `CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INTERNAL_ERROR`.
+`USER_NOT_FOUND`, `ALREADY_SHARED`, `CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INVALID_INVITE`, `INTERNAL_ERROR`.
 
 ## Project structure
 
@@ -182,7 +192,7 @@ src/
 ├─ modules/<feature>/     one folder per feature (health, auth, users, ...)
 ├─ middleware/            notFound, errorHandler, validate, requireAuth
 ├─ types/express.d.ts     adds req.user / req.sessionId to Express's Request type
-└─ utils/                 AppError (HTTP status + stable code), password (bcrypt), email (Resend)
+└─ utils/                 AppError (HTTP status + stable code), password (bcrypt), email (SendGrid)
 
 modules/<feature>/
 ├─ <feature>.routes.ts      URL → middleware → controller

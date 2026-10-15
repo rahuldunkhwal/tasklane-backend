@@ -1,7 +1,11 @@
+import crypto from 'node:crypto';
+import { env } from '../../config/env.js';
 import { AppError } from '../../utils/AppError.js';
+import { sendEmail } from '../../utils/email.js';
 import { TaskModel } from '../tasks/task.model.js';
 import { UserModel } from '../users/user.model.js';
-import { BoardModel } from './board.model.js';
+import { boardInviteEmail } from './boards.emails.js';
+import { BoardModel, type BoardDocument } from './board.model.js';
 import { toBoardDto, type BoardRole, type ShareDto } from './board.dto.js';
 import type { CreateBoardInput, ShareBoardInput, UpdateBoardInput } from './boards.schema.js';
 
@@ -99,9 +103,8 @@ export async function deleteBoard(userId: string, boardId: string) {
 
 // ---------- Sharing (owner only) ----------
 
-// Who the board is shared with: name + email of each person, in the order they were added
-export async function listShares(userId: string, boardId: string): Promise<ShareDto[]> {
-  const board = await getOwnBoard(userId, boardId);
+// Name + email of each person a board is shared with, in the order they were added
+async function sharesForBoard(board: BoardDocument): Promise<ShareDto[]> {
   const users = await UserModel.find({ _id: { $in: board.sharedWith.map((s) => s.user) } }).select(
     'name email',
   );
@@ -112,6 +115,86 @@ export async function listShares(userId: string, boardId: string): Promise<Share
     const user = usersById.get(share.user.toString());
     return user ? [{ userId: user.id, name: user.name, email: user.email }] : [];
   });
+}
+
+export async function listShares(userId: string, boardId: string): Promise<ShareDto[]> {
+  const board = await getOwnBoard(userId, boardId);
+  return sharesForBoard(board);
+}
+
+// ---------- Invite link ----------
+
+// The bearer token behind a board's invite link, created the first time it's needed
+async function ensureInviteToken(board: BoardDocument): Promise<string> {
+  if (board.inviteToken) return board.inviteToken;
+  const token = crypto.randomBytes(24).toString('base64url');
+  board.inviteToken = token;
+  await board.save();
+  return token;
+}
+
+function inviteLinkFor(token: string): string {
+  return `${env.CLIENT_ORIGIN}/invite/${token}`;
+}
+
+// For the Share dialog: the current viewers + a ready-to-copy invite link (owner only)
+export async function getSharing(userId: string, boardId: string) {
+  const board = await getOwnBoard(userId, boardId);
+  const token = await ensureInviteToken(board);
+  return { shares: await sharesForBoard(board), inviteLink: inviteLinkFor(token) };
+}
+
+// Owner regenerates the invite link. The old link stops working immediately, which is how you
+// cut off access via a link that leaked or that a removed viewer still holds (the link is a
+// shared bearer token, so removing one person can't block them from it on its own).
+export async function resetInviteLink(userId: string, boardId: string) {
+  const board = await getOwnBoard(userId, boardId);
+  board.inviteToken = crypto.randomBytes(24).toString('base64url');
+  await board.save();
+  return { inviteLink: inviteLinkFor(board.inviteToken) };
+}
+
+// Owner emails the invite link to an address (typically someone without an account yet).
+// The link carries the email so the sign-up / log-in form can pre-fill it.
+export async function sendInvite(userId: string, boardId: string, email: string) {
+  const board = await getOwnBoard(userId, boardId);
+  const token = await ensureInviteToken(board);
+  const inviter = await UserModel.findById(userId).select('name');
+  const link = `${inviteLinkFor(token)}?email=${encodeURIComponent(email)}`;
+
+  // Un-awaited, like the password-reset email: the request shouldn't wait on the mail provider.
+  sendEmail(boardInviteEmail(email, link, inviter?.name ?? 'Someone', board.title)).catch(
+    (error: unknown) => console.error('Failed to send board invite email:', error),
+  );
+  return { message: 'Invitation sent' };
+}
+
+// PUBLIC (no login): what the invite landing page shows before anyone signs in
+export async function getInviteInfo(token: string) {
+  const board = await BoardModel.findOne({ inviteToken: token }).populate<{
+    owner: { name: string };
+  }>('owner', 'name');
+  if (!board) {
+    throw new AppError(404, 'INVALID_INVITE', 'This invite link is invalid or no longer works');
+  }
+  return { boardTitle: board.title, inviterName: board.owner.name };
+}
+
+// Logged-in user joins the board the link points to (as a viewer). Idempotent.
+export async function acceptInvite(userId: string, token: string) {
+  const board = await BoardModel.findOne({ inviteToken: token });
+  if (!board) {
+    throw new AppError(404, 'INVALID_INVITE', 'This invite link is invalid or no longer works');
+  }
+  // The owner opening their own link just goes to the board; no share to add.
+  if (!board.owner.equals(userId)) {
+    // Add as a viewer only if not already in the list (atomic → two clicks can't double-add).
+    await BoardModel.updateOne(
+      { _id: board._id, 'sharedWith.user': { $ne: userId } },
+      { $push: { sharedWith: { user: userId, role: 'viewer' } } },
+    );
+  }
+  return { boardId: board.id };
 }
 
 export async function shareBoard(userId: string, boardId: string, input: ShareBoardInput) {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { healthRouter } from '../modules/health/health.routes.js';
 import { authRouter } from '../modules/auth/auth.routes.js';
 import { boardsRouter } from '../modules/boards/boards.routes.js';
+import { invitesRouter } from '../modules/invites/invites.routes.js';
 import { tasksRouter } from '../modules/tasks/tasks.routes.js';
 
 // Every feature router is mounted here, so app.ts stays short.
@@ -11,3 +12,4 @@ apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/boards', boardsRouter);
 apiRouter.use('/tasks', tasksRouter);
+apiRouter.use('/invites', invitesRouter);

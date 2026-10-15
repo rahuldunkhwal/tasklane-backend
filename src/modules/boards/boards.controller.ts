@@ -35,8 +35,24 @@ export const remove: RequestHandler<{ id: string }> = async (req, res) => {
 
 // ---------- Sharing ----------
 
-export const listShares: RequestHandler<{ id: string }> = async (req, res) => {
-  res.json({ shares: await boardsService.listShares(getAuthUser(req).id, req.params.id) });
+// The viewers list + the board's invite link (owner only)
+export const sharing: RequestHandler<{ id: string }> = async (req, res) => {
+  res.json(await boardsService.getSharing(getAuthUser(req).id, req.params.id));
+};
+
+// Regenerate the invite link (the old one stops working)
+export const resetInviteLink: RequestHandler<{ id: string }> = async (req, res) => {
+  res.json(await boardsService.resetInviteLink(getAuthUser(req).id, req.params.id));
+};
+
+// Email the invite link to an address (used when that email has no account yet)
+export const sendInvite: RequestHandler<{ id: string }> = async (req, res) => {
+  const result = await boardsService.sendInvite(
+    getAuthUser(req).id,
+    req.params.id,
+    (req.body as ShareBoardInput).email,
+  );
+  res.json(result);
 };
 
 export const share: RequestHandler<{ id: string }> = async (req, res) => {

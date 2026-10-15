@@ -16,6 +16,10 @@ boardsRouter.patch('/:id', validateBody(updateBoardSchema), boardsController.upd
 boardsRouter.delete('/:id', boardsController.remove);
 
 // Sharing (owner only: viewers get 403, strangers 404)
-boardsRouter.get('/:id/shares', boardsController.listShares);
+boardsRouter.get('/:id/shares', boardsController.sharing);
 boardsRouter.post('/:id/shares', validateBody(shareBoardSchema), boardsController.share);
 boardsRouter.delete('/:id/shares/:userId', boardsController.unshare);
+// Email the invite link to someone (typically a person without an account yet)
+boardsRouter.post('/:id/invites', validateBody(shareBoardSchema), boardsController.sendInvite);
+// Regenerate the invite link, disabling the old one
+boardsRouter.post('/:id/invite-link/reset', boardsController.resetInviteLink);

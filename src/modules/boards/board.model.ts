@@ -15,6 +15,10 @@ const boardSchema = new Schema(
     owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, maxlength: 100 },
     sharedWith: { type: [shareSchema], default: [] },
+    // A random token behind the board's invite link. Anyone with the link can join as a viewer,
+    // so it's a bearer token (like a Trello share link). Created lazily the first time a link is
+    // requested. Sparse index: only boards that have a token are indexed, and we look boards up by it.
+    inviteToken: { type: String, index: true, sparse: true },
   },
   { timestamps: true },
 );
