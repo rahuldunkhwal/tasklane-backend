@@ -1,0 +1,23 @@
+# Local development database only. Production uses MongoDB Atlas.
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: taskboard-mongo
+    restart: unless-stopped
+    ports:
+      # Bind to localhost only: this dev database has no password,
+      # so it must not be reachable from other machines on the network.
+      - '127.0.0.1:27017:27017'
+    volumes:
+      # Named volume: data survives container restarts and re-creation.
+      - mongo-data:/data/db
+    healthcheck:
+      # "Container is running" is not the same as "Mongo accepts queries".
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mongo-data:
