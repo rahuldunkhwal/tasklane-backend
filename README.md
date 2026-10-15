@@ -74,6 +74,19 @@ deletes it, so a token stops working immediately. A TTL index removes expired se
 **Password reset:** the emailed link points to the frontend (`CLIENT_ORIGIN/reset-password?token=...`). Only a
 SHA-256 hash of the token is stored; it expires after 15 minutes, works once, and a newer request replaces it.
 
+### Boards (all require login)
+
+| Method | Path              | Description                                             |
+| ------ | ----------------- | ------------------------------------------------------- |
+| GET    | `/api/boards`     | `200 {boards}`: the current user's boards, oldest first |
+| POST   | `/api/boards`     | Body `{title}` (1–100 chars) → `201 {board}`            |
+| GET    | `/api/boards/:id` | `200 {board}`. `404 BOARD_NOT_FOUND`, `400 INVALID_ID`  |
+| PATCH  | `/api/boards/:id` | Body `{title}` → `200 {board}` (rename)                 |
+| DELETE | `/api/boards/:id` | `204`                                                   |
+
+A board is `{id, title, createdAt, updatedAt}`. Every query includes the owner, so another user's board answers
+`404` (not `403`): the API never reveals that it exists.
+
 ### Error format
 
 Every error has the same shape:
@@ -90,7 +103,7 @@ Every error has the same shape:
 
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
 `INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
-`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `INTERNAL_ERROR`.
+`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `BOARD_NOT_FOUND`, `INTERNAL_ERROR`.
 
 ## Project structure
 
