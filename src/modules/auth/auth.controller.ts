@@ -1,7 +1,12 @@
 import type { RequestHandler } from 'express';
 import { getAuthUser } from '../../middleware/requireAuth.js';
 import { toPublicUser } from '../users/user.dto.js';
-import type { LoginInput, SignupInput } from './auth.schema.js';
+import type {
+  ForgotPasswordInput,
+  LoginInput,
+  ResetPasswordInput,
+  SignupInput,
+} from './auth.schema.js';
 import * as authService from './auth.service.js';
 import { AUTH_COOKIE, clearAuthCookie, setAuthCookie } from './auth.token.js';
 
@@ -31,4 +36,19 @@ export const logout: RequestHandler = async (req, res) => {
   await authService.endSession(typeof token === 'string' ? token : undefined);
   clearAuthCookie(res);
   res.status(204).end(); // 204 = success, nothing to send back
+};
+
+export const forgotPassword: RequestHandler = async (req, res) => {
+  await authService.requestPasswordReset((req.body as ForgotPasswordInput).email);
+  // Same answer whether or not the email has an account
+  res.json({
+    message: 'If an account exists for this email, we sent a link to reset the password.',
+  });
+};
+
+export const resetPassword: RequestHandler = async (req, res) => {
+  await authService.resetPassword(req.body as ResetPasswordInput);
+  // Every session was ended, so also drop this browser's (now useless) cookie
+  clearAuthCookie(res);
+  res.json({ message: 'Your password has been reset. Please log in with your new password.' });
 };

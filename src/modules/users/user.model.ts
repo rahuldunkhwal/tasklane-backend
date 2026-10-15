@@ -10,6 +10,12 @@ const userSchema = new Schema(
 
     // select: false = never loaded by queries unless explicitly asked for with .select('+passwordHash')
     passwordHash: { type: String, required: true, select: false },
+
+    // Forgot password: we store only a SHA-256 hash of the emailed token (never the token itself),
+    // so a leaked database can't be used to reset anyone's password. Removed once used.
+    // sparse index: only users with an active reset request are in it.
+    passwordResetTokenHash: { type: String, select: false, index: true, sparse: true },
+    passwordResetExpires: { type: Date, select: false },
   },
   { timestamps: true }, // adds createdAt and updatedAt automatically
 );

@@ -44,5 +44,17 @@ export const loginSchema = z.object({
   password: requiredString('Password').min(1, 'Password is required'),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: emailRule,
+});
+
+// The new password follows the same rules as signup (shared passwordRule)
+export const resetPasswordSchema = z.object({
+  token: requiredString('Reset token').min(1, 'Reset token is required'),
+  password: passwordRule,
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
