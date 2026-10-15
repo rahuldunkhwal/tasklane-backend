@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import { getAuthUser } from '../../middleware/requireAuth.js';
 import { toTaskDto } from './task.dto.js';
-import type { CreateTaskInput, UpdateTaskInput } from './tasks.schema.js';
+import type { CreateTaskInput, MoveTaskInput, UpdateTaskInput } from './tasks.schema.js';
 import * as tasksService from './tasks.service.js';
 
 export const list: RequestHandler = async (req, res) => {
@@ -19,6 +19,15 @@ export const update: RequestHandler<{ id: string }> = async (req, res) => {
     getAuthUser(req).id,
     req.params.id,
     req.body as UpdateTaskInput,
+  );
+  res.json({ task: toTaskDto(task) });
+};
+
+export const move: RequestHandler<{ id: string }> = async (req, res) => {
+  const task = await tasksService.moveTask(
+    getAuthUser(req).id,
+    req.params.id,
+    req.body as MoveTaskInput,
   );
   res.json({ task: toTaskDto(task) });
 };

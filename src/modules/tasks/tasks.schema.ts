@@ -48,5 +48,16 @@ export const updateTaskSchema = z
     message: 'Nothing to update',
   });
 
+// Drag & drop: "put this task in board X at position N" (0 = top). The client only says WHERE;
+// the server works out the actual order number from the neighbours stored in the database.
+export const moveTaskSchema = z.object({
+  boardId: boardIdRule,
+  index: z
+    .number({ error: 'Index must be a number' })
+    .int('Index must be a whole number')
+    .min(0, 'Index cannot be negative'),
+});
+
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+export type MoveTaskInput = z.infer<typeof moveTaskSchema>;

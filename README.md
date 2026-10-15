@@ -89,12 +89,13 @@ A board is `{id, title, createdAt, updatedAt}`. Every query includes the owner, 
 
 ### Tasks (all require login)
 
-| Method | Path             | Description                                                                            |
-| ------ | ---------------- | -------------------------------------------------------------------------------------- |
-| GET    | `/api/tasks`     | `200 {tasks}`: every task in the user's boards (one request), by board then `order`    |
-| POST   | `/api/tasks`     | Body `{boardId, title, description?, priority?, dueDate?}` → `201 {task}` (added last) |
-| PATCH  | `/api/tasks/:id` | Any of `{title, description, priority, dueDate, completed}` → `200 {task}`             |
-| DELETE | `/api/tasks/:id` | `204`                                                                                  |
+| Method | Path                  | Description                                                                                                   |
+| ------ | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/tasks`          | `200 {tasks}`: every task in the user's boards (one request), by board then `order`                           |
+| POST   | `/api/tasks`          | Body `{boardId, title, description?, priority?, dueDate?}` → `201 {task}` (added last)                        |
+| PATCH  | `/api/tasks/:id`      | Any of `{title, description, priority, dueDate, completed}` → `200 {task}`                                    |
+| DELETE | `/api/tasks/:id`      | `204`                                                                                                         |
+| PATCH  | `/api/tasks/:id/move` | Body `{boardId, index}` → `200 {task}`: drag & drop to position `index` (0 = top) of any of the user's boards |
 
 A task is `{id, boardId, title, description, priority, dueDate, completed, order, createdAt, updatedAt}`.
 
@@ -102,6 +103,10 @@ A task is `{id, boardId, title, description, priority, dueDate, completed, order
 - `dueDate`: an ISO date-time or `null`. The frontend sends the **end of the chosen day in the user's time zone**, so
   a task is overdue when `!completed && dueDate < now`. Past dates are accepted.
 - `order`: position in the board; new tasks get `last + 1000`, leaving gaps for drag & drop.
+- **Moving** (`/move`): the client sends only the target board and position; the server computes the order from the
+  neighbours in the database (between two tasks → their midpoint, top → first − 1000, bottom → last + 1000, empty
+  board → 1000). Only the moved task is written. If two neighbours are too close to fit a task between them, that
+  board is renumbered (1000, 2000, …) in one `bulkWrite` first.
 - Tasks have no owner field: a task belongs to the owner of its board. Another user's task → `404 TASK_NOT_FOUND`,
   another user's board → `404 BOARD_NOT_FOUND`.
 
