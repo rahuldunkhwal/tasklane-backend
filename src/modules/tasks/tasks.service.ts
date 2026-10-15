@@ -1,7 +1,13 @@
+import type { QueryFilter } from 'mongoose';
 import { AppError } from '../../utils/AppError.js';
 import { getOwnBoard, listOwnBoardIds, ownsBoard } from '../boards/boards.service.js';
-import { TaskModel } from './task.model.js';
-import type { CreateTaskInput, MoveTaskInput, UpdateTaskInput } from './tasks.schema.js';
+import { TaskModel, type Task } from './task.model.js';
+import type {
+  CreateTaskInput,
+  MoveTaskInput,
+  TaskFilters,
+  UpdateTaskInput,
+} from './tasks.schema.js';
 
 // Tasks have no owner field: a task is yours if its BOARD is yours.
 // So every function here goes through the boards service to check access.
@@ -13,10 +19,38 @@ const ORDER_GAP = 1000;
 // (computer numbers have limited precision), so the board gets renumbered first.
 const MIN_GAP = 1e-6;
 
-// All tasks in all of this user's boards, in one query (the frontend groups them by board)
-export async function listTasks(userId: string) {
+// Makes user text match literally: "(" or ".*" are searched as plain characters.
+// Without this, "(" would crash the query, and a crafted pattern could make MongoDB
+// spend a very long time matching (a "ReDoS" attack).
+function escapeRegex(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// The user's tasks (all of their boards, one query), optionally filtered.
+// Every filter is ADDED to the "only my boards" condition, so filters can never widen access.
+export async function listTasks(userId: string, filters: TaskFilters = {}) {
   const boardIds = await listOwnBoardIds(userId);
-  return TaskModel.find({ board: { $in: boardIds } }).sort({ board: 1, order: 1 });
+  const query: QueryFilter<Task> = { board: { $in: boardIds } };
+
+  if (filters.search) {
+    query.title = { $regex: escapeRegex(filters.search), $options: 'i' }; // "contains", any case
+  }
+  if (filters.priority) {
+    query.priority = filters.priority;
+  }
+  if (filters.completed !== undefined) {
+    query.completed = filters.completed;
+  }
+  if (filters.noDueDate) {
+    query.dueDate = null; // matches tasks without a due date
+  } else if (filters.dueFrom || filters.dueTo) {
+    query.dueDate = {
+      ...(filters.dueFrom && { $gte: filters.dueFrom }),
+      ...(filters.dueTo && { $lte: filters.dueTo }),
+    };
+  }
+
+  return TaskModel.find(query).sort({ board: 1, order: 1 });
 }
 
 // A task counts only if it exists AND its board belongs to this user.

@@ -102,6 +102,19 @@ A task is `{id, boardId, title, description, priority, dueDate, completed, order
 - `priority`: `low` | `medium` | `high` (default `medium`). Title 1–200 chars, description up to 2000.
 - `dueDate`: an ISO date-time or `null`. The frontend sends the **end of the chosen day in the user's time zone**, so
   a task is overdue when `!completed && dueDate < now`. Past dates are accepted.
+- **Search & filters** on `GET /api/tasks` (all optional, combined with AND, always limited to the user's boards):
+
+  | Query param        | Meaning                                                                    |
+  | ------------------ | -------------------------------------------------------------------------- |
+  | `search=milk`      | title contains the text, case-insensitive (special characters are escaped) |
+  | `priority=high`    | `low` \| `medium` \| `high`                                                |
+  | `dueFrom`, `dueTo` | ISO date-times: due between these moments (inclusive)                      |
+  | `noDueDate=true`   | only tasks without a due date                                              |
+  | `completed=false`  | `true` \| `false`                                                          |
+
+  The client sends exact moments, e.g. overdue = `completed=false&dueTo=<now>`, due today = `dueFrom=<start of
+today>&dueTo=<end of today>` in the user's time zone, so the server never needs the user's time zone.
+
 - `order`: position in the board; new tasks get `last + 1000`, leaving gaps for drag & drop.
 - **Moving** (`/move`): the client sends only the target board and position; the server computes the order from the
   neighbours in the database (between two tasks → their midpoint, top → first − 1000, bottom → last + 1000, empty
