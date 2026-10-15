@@ -84,8 +84,27 @@ SHA-256 hash of the token is stored; it expires after 15 minutes, works once, an
 | PATCH  | `/api/boards/:id` | Body `{title}` → `200 {board}` (rename)                 |
 | DELETE | `/api/boards/:id` | `204`                                                   |
 
-A board is `{id, title, createdAt, updatedAt}`. Every query includes the owner, so another user's board answers
-`404` (not `403`): the API never reveals that it exists. Deleting a board also deletes its tasks.
+A board is `{id, title, role, ownerName?, createdAt, updatedAt}`. `role` is `owner` or `viewer`; `ownerName` is only
+present on boards shared with the user. `GET /api/boards` returns the user's own boards first, then boards shared
+with them. Deleting a board also deletes its tasks (and its shares).
+
+### Sharing (view-only, by email)
+
+| Method | Path                             | Description                                                                                                           |
+| ------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}]}`                                                                  |
+| POST   | `/api/boards/:id/shares`         | Owner only. Body `{email}` → `201 {shares}`. `404 USER_NOT_FOUND`, `409 ALREADY_SHARED`, `400 CANNOT_SHARE_WITH_SELF` |
+| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`. `404 SHARE_NOT_FOUND`                                                                             |
+
+**Access rules** (one place: `getVisibleBoard` / `getOwnBoard` in `boards.service.ts`):
+
+| Who                  | Sees the board and its tasks   | Any change (board, tasks, moves, shares) |
+| -------------------- | ------------------------------ | ---------------------------------------- |
+| Owner                | yes                            | yes                                      |
+| Viewer (shared with) | yes (also in search/filters)   | `403 READ_ONLY`                          |
+| Anyone else          | `404` (existence not revealed) | `404`                                    |
+
+The dashboard (`/api/tasks/stats`) counts only the user's own boards.
 
 ### Tasks (all require login)
 
@@ -144,8 +163,8 @@ Every error has the same shape:
 
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
 `INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
-`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`,
-`INTERNAL_ERROR`.
+`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`,
+`USER_NOT_FOUND`, `ALREADY_SHARED`, `CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INTERNAL_ERROR`.
 
 ## Project structure
 
