@@ -34,7 +34,8 @@ export function toErrorResponse(err: unknown) {
 
   // 3. A value could not be converted for a query, e.g. "abc" used as an ObjectId
   if (err instanceof mongoose.Error.CastError) {
-    return reply(400, 'INVALID_ID', `Invalid ${err.path}`);
+    // "_id" is a database name: show users a plain "Invalid id"
+    return reply(400, 'INVALID_ID', err.path === '_id' ? 'Invalid id' : `Invalid ${err.path}`);
   }
 
   // 4. A document broke a rule in its Mongoose schema
