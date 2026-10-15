@@ -9,6 +9,7 @@ export const tasksRouter = Router();
 tasksRouter.use(requireAuth);
 
 tasksRouter.get('/', tasksController.list);
+tasksRouter.get('/stats', tasksController.stats); // dashboard counts
 tasksRouter.post('/', validateBody(createTaskSchema), tasksController.create);
 tasksRouter.patch('/:id', validateBody(updateTaskSchema), tasksController.update);
 // Drag & drop: a separate endpoint, because moving needs the neighbours, not just new field values
