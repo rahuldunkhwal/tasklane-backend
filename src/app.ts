@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env.js';
 import { apiRouter } from './routes/index.js';
+import { notFound } from './middleware/notFound.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 // Builds the Express app without starting it, so tests can pass it straight to supertest.
 export function createApp() {
@@ -26,6 +28,12 @@ export function createApp() {
 
   // All endpoints live under /api, so the frontend's dev proxy can forward just this prefix
   app.use('/api', apiRouter);
+
+  // Nothing matched above: turn it into a 404 error
+  app.use(notFound);
+
+  // Must be registered LAST: every error from any route or middleware ends up here
+  app.use(errorHandler);
 
   return app;
 }
