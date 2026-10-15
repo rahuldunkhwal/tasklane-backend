@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output and test coverage
+dist/
+coverage/
+
+# Environment files hold secrets. Only the .env.example templates are committed.
+.env
+.env.*
+!.env.example
+
+# User-uploaded files (profile pictures) are runtime data, not source code
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.local

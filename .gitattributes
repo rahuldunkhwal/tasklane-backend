@@ -1,0 +1,13 @@
+# Store and check out every text file with LF line endings, whatever the OS.
+# This overrides Git for Windows' core.autocrlf=true, so diffs never show
+# whole files changing because of CRLF/LF differences.
+* text=auto eol=lf
+
+# Never touch line endings in binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff2 binary
