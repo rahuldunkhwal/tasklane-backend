@@ -71,7 +71,8 @@ Every error has the same shape:
 ```
 
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
-`INVALID_ID`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `INTERNAL_ERROR`.
+`INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
+`INTERNAL_ERROR`.
 
 ## Project structure
 
