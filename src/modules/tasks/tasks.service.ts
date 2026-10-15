@@ -1,6 +1,11 @@
 import type { QueryFilter } from 'mongoose';
 import { AppError } from '../../utils/AppError.js';
-import { getOwnBoard, listOwnBoardIds, ownsBoard } from '../boards/boards.service.js';
+import {
+  boardRoleFor,
+  getOwnBoard,
+  listOwnBoardIds,
+  listVisibleBoardIds,
+} from '../boards/boards.service.js';
 import { TaskModel, type Task } from './task.model.js';
 import type {
   CreateTaskInput,
@@ -9,8 +14,9 @@ import type {
   UpdateTaskInput,
 } from './tasks.schema.js';
 
-// Tasks have no owner field: a task is yours if its BOARD is yours.
-// So every function here goes through the boards service to check access.
+// Tasks have no owner field: access comes from the task's BOARD.
+// You may SEE tasks of boards you own or that are shared with you, but only CHANGE tasks of
+// boards you own. Every function here goes through the boards service to check that.
 
 // Space between neighbouring tasks' order numbers (1000, 2000, 3000...). The gaps let a task be
 // placed between two others by changing only that one task (e.g. 1500).
@@ -26,10 +32,10 @@ function escapeRegex(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// The user's tasks (all of their boards, one query), optionally filtered.
-// Every filter is ADDED to the "only my boards" condition, so filters can never widen access.
+// The tasks of every board the user can see (own + shared with them), optionally filtered.
+// Every filter is ADDED to the "only boards I can see" condition, so filters can never widen access.
 export async function listTasks(userId: string, filters: TaskFilters = {}) {
-  const boardIds = await listOwnBoardIds(userId);
+  const boardIds = await listVisibleBoardIds(userId);
   const query: QueryFilter<Task> = { board: { $in: boardIds } };
 
   if (filters.search) {
@@ -97,18 +103,23 @@ export async function getTaskStats(userId: string): Promise<TaskStats> {
   return stats ?? { total: 0, completed: 0, overdue: 0 };
 }
 
-// A task counts only if it exists AND its board belongs to this user.
-// Otherwise "not found" (404), which doesn't reveal that the task exists.
+// WRITE access to a task (edit, tick, delete, move): its board must be the user's own.
+//   can't see the task at all       → 404 "Task not found" (doesn't reveal it exists)
+//   can see it (shared, view-only)  → 403 "view-only access"
 async function getOwnTask(userId: string, taskId: string) {
   const task = await TaskModel.findById(taskId);
-  if (!task || !(await ownsBoard(userId, task.board))) {
+  const role = task ? await boardRoleFor(userId, task.board) : null;
+  if (!task || !role) {
     throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+  }
+  if (role !== 'owner') {
+    throw new AppError(403, 'READ_ONLY', 'You have view-only access to this board');
   }
   return task;
 }
 
 export async function createTask(userId: string, input: CreateTaskInput) {
-  // 404 "Board not found" if the board isn't this user's
+  // 404 if the board can't be seen, 403 if it's only shared with this user (view-only)
   const board = await getOwnBoard(userId, input.boardId);
 
   // New tasks go to the bottom of the board: last order + 1000 (the first task gets 1000)
