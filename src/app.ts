@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env.js';
+import { apiRouter } from './routes/index.js';
 
 // Builds the Express app without starting it, so tests can pass it straight to supertest.
 export function createApp() {
@@ -22,6 +23,9 @@ export function createApp() {
 
   // Parse JSON bodies, capped at 100kb so a huge payload can't exhaust memory
   app.use(express.json({ limit: '100kb' }));
+
+  // All endpoints live under /api, so the frontend's dev proxy can forward just this prefix
+  app.use('/api', apiRouter);
 
   return app;
 }
