@@ -1,18 +1,10 @@
 import { z } from 'zod';
-import { requiredString } from '../../utils/zod.js';
+import { emailRule, requiredString } from '../../utils/zod.js';
 
 const nameRule = requiredString('Name')
   .trim()
   .min(1, 'Name is required')
   .max(50, 'Name must be at most 50 characters');
-
-// Trim and lowercase first, then check the format.
-// abort: true = if the field is empty, stop here and show only "is required" (not a format error too).
-const emailRule = requiredString('Email')
-  .trim()
-  .toLowerCase()
-  .min(1, { error: 'Email is required', abort: true })
-  .pipe(z.email('Enter a valid email address'));
 
 // Exported: reset password and change password (later phases) must use the same rules
 export const passwordRule = requiredString('Password')
