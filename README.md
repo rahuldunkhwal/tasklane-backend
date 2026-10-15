@@ -64,6 +64,7 @@ Validated at startup by `src/config/env.ts`: the server refuses to start if any 
 | POST   | `/api/auth/logout`          | Ends the session and clears the cookie → `204` (also when already logged out)                                             |
 | POST   | `/api/auth/forgot-password` | Body `{email}` → always `200 {message}` (same answer whether or not the account exists); emails a reset link valid 15 min |
 | POST   | `/api/auth/reset-password`  | Body `{token, password}` → `200 {message}`, logs out all devices. `400 INVALID_RESET_TOKEN`                               |
+| POST   | `/api/auth/change-password` | Requires login. Body `{currentPassword, newPassword}` → `200 {message}`. `400 INVALID_CURRENT_PASSWORD`                   |
 
 **Authentication:** a JWT in an `httpOnly`, `SameSite=Lax` cookie named `token` (7 days, `Secure` in production).
 The JWT holds the user id and a session id. Each login creates a document in the `sessions` collection; logout
@@ -73,6 +74,10 @@ deletes it, so a token stops working immediately. A TTL index removes expired se
 
 **Password reset:** the emailed link points to the frontend (`CLIENT_ORIGIN/reset-password?token=...`). Only a
 SHA-256 hash of the token is stored; it expires after 15 minutes, works once, and a newer request replaces it.
+
+**Change password:** needs the current password. The user's other sessions (other devices) are deleted; the one making
+the request stays logged in. A wrong current password is `400`, not `401`, because the frontend treats every `401` as
+"your session expired" and logs the user out.
 
 ### Boards (all require login)
 
@@ -163,7 +168,7 @@ Every error has the same shape:
 
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
 `INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
-`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`,
+`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `INVALID_CURRENT_PASSWORD`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`,
 `USER_NOT_FOUND`, `ALREADY_SHARED`, `CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INTERNAL_ERROR`.
 
 ## Project structure

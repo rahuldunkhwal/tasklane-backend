@@ -37,7 +37,20 @@ export const resetPasswordSchema = z.object({
   password: passwordRule,
 });
 
+// Change password while logged in. The current password proves it's really the account owner
+// (not someone using a laptop that was left logged in); the new one follows the signup rules.
+export const changePasswordSchema = z
+  .object({
+    currentPassword: requiredString('Current password').min(1, 'Current password is required'),
+    newPassword: passwordRule,
+  })
+  .refine((values) => values.currentPassword !== values.newPassword, {
+    message: 'New password must be different from the current one',
+    path: ['newPassword'],
+  });
+
 export type SignupInput = z.infer<typeof signupSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

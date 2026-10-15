@@ -32,3 +32,9 @@ export function getAuthUser(req: Request): UserDocument {
   if (!req.user) throw unauthorized();
   return req.user;
 }
+
+// For handlers behind requireAuth: the id of the session (device) making this request
+export function getAuthSessionId(req: Request): string {
+  if (!req.sessionId) throw unauthorized();
+  return req.sessionId;
+}

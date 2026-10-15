@@ -3,6 +3,7 @@ import { requireAuth } from '../../middleware/requireAuth.js';
 import { validateBody } from '../../middleware/validate.js';
 import * as authController from './auth.controller.js';
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   resetPasswordSchema,
@@ -23,3 +24,10 @@ authRouter.post(
   authController.forgotPassword,
 );
 authRouter.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+// Logged in: requireAuth runs first, so a logged-out request gets 401 before any validation
+authRouter.post(
+  '/change-password',
+  requireAuth,
+  validateBody(changePasswordSchema),
+  authController.changePassword,
+);
