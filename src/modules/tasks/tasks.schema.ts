@@ -58,6 +58,35 @@ export const moveTaskSchema = z.object({
     .min(0, 'Index cannot be negative'),
 });
 
+// ---------- Search & filters: GET /api/tasks?search=&priority=&dueFrom=&dueTo=&noDueDate=&completed= ----------
+// Everything is optional. Query values always arrive as text, so booleans are read from "true"/"false".
+const booleanText = z
+  .enum(['true', 'false'], { error: 'Must be true or false' })
+  .transform((value) => value === 'true');
+
+const dateText = (name: string) =>
+  z.iso
+    .datetime({ offset: true, error: `${name} must be a valid date` })
+    .transform((value) => new Date(value));
+
+export const taskFiltersSchema = z
+  .object({
+    search: z.string().trim().max(100, 'Search must be at most 100 characters').optional(),
+    priority: priorityRule.optional(),
+    // The browser sends exact moments (e.g. start and end of "today" in the user's time zone),
+    // so the server never has to know the user's time zone.
+    dueFrom: dateText('dueFrom').optional(),
+    dueTo: dateText('dueTo').optional(),
+    noDueDate: booleanText.optional(),
+    completed: booleanText.optional(),
+  })
+  .refine((f) => !f.dueFrom || !f.dueTo || f.dueFrom <= f.dueTo, {
+    message: 'dueFrom must be before dueTo',
+    path: ['dueFrom'],
+  });
+
+export type TaskFilters = z.infer<typeof taskFiltersSchema>;
+
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type MoveTaskInput = z.infer<typeof moveTaskSchema>;
