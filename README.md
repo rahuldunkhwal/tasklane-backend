@@ -85,7 +85,25 @@ SHA-256 hash of the token is stored; it expires after 15 minutes, works once, an
 | DELETE | `/api/boards/:id` | `204`                                                   |
 
 A board is `{id, title, createdAt, updatedAt}`. Every query includes the owner, so another user's board answers
-`404` (not `403`): the API never reveals that it exists.
+`404` (not `403`): the API never reveals that it exists. Deleting a board also deletes its tasks.
+
+### Tasks (all require login)
+
+| Method | Path             | Description                                                                            |
+| ------ | ---------------- | -------------------------------------------------------------------------------------- |
+| GET    | `/api/tasks`     | `200 {tasks}`: every task in the user's boards (one request), by board then `order`    |
+| POST   | `/api/tasks`     | Body `{boardId, title, description?, priority?, dueDate?}` → `201 {task}` (added last) |
+| PATCH  | `/api/tasks/:id` | Any of `{title, description, priority, dueDate, completed}` → `200 {task}`             |
+| DELETE | `/api/tasks/:id` | `204`                                                                                  |
+
+A task is `{id, boardId, title, description, priority, dueDate, completed, order, createdAt, updatedAt}`.
+
+- `priority`: `low` | `medium` | `high` (default `medium`). Title 1–200 chars, description up to 2000.
+- `dueDate`: an ISO date-time or `null`. The frontend sends the **end of the chosen day in the user's time zone**, so
+  a task is overdue when `!completed && dueDate < now`. Past dates are accepted.
+- `order`: position in the board; new tasks get `last + 1000`, leaving gaps for drag & drop.
+- Tasks have no owner field: a task belongs to the owner of its board. Another user's task → `404 TASK_NOT_FOUND`,
+  another user's board → `404 BOARD_NOT_FOUND`.
 
 ### Error format
 
@@ -103,7 +121,8 @@ Every error has the same shape:
 
 `details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
 `INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
-`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `BOARD_NOT_FOUND`, `INTERNAL_ERROR`.
+`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`,
+`INTERNAL_ERROR`.
 
 ## Project structure
 

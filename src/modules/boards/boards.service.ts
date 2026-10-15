@@ -1,4 +1,5 @@
 import { AppError } from '../../utils/AppError.js';
+import { TaskModel } from '../tasks/task.model.js';
 import { BoardModel } from './board.model.js';
 import type { CreateBoardInput, UpdateBoardInput } from './boards.schema.js';
 
@@ -19,6 +20,16 @@ export async function getOwnBoard(ownerId: string, boardId: string) {
   return board;
 }
 
+// The ids of every board this user may see. Tasks use it: "my tasks" = tasks in these boards.
+export function listOwnBoardIds(ownerId: string) {
+  return BoardModel.find({ owner: ownerId }).distinct('_id');
+}
+
+// Yes/no version of getOwnBoard, for callers that want their own error (e.g. "Task not found")
+export async function ownsBoard(ownerId: string, boardId: unknown) {
+  return (await BoardModel.exists({ _id: boardId, owner: ownerId })) !== null;
+}
+
 export function createBoard(ownerId: string, input: CreateBoardInput) {
   return BoardModel.create({ owner: ownerId, title: input.title });
 }
@@ -31,6 +42,11 @@ export async function renameBoard(ownerId: string, boardId: string, input: Updat
 
 export async function deleteBoard(ownerId: string, boardId: string) {
   const board = await getOwnBoard(ownerId, boardId);
-  // Tasks phase: this board's tasks will be deleted here too
+
+  // Board first, then its tasks. If the second step ever failed, the leftover tasks would be
+  // invisible (their board is gone), which is harmless. The other order could leave a board
+  // with its tasks missing. (A transaction would do both at once, but MongoDB transactions
+  // need a replica set, and the local Docker MongoDB is a single server.)
   await board.deleteOne();
+  await TaskModel.deleteMany({ board: board._id });
 }
