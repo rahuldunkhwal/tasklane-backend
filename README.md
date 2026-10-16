@@ -2,7 +2,9 @@
 
 REST API for the Tasklane app: Express 5, TypeScript, MongoDB (Mongoose).
 
-> The frontend lives in a separate repository. This README grows with each phase.
+> **Live API:** https://tasklane-backend-md7v.onrender.com/api/health (Render free tier: the first request after
+> ~15 min idle takes 30–60 s to wake up) · **Live app:** https://tasklane-frontend.vercel.app ·
+> **Frontend repo:** https://github.com/rahuldunkhwal/tasklane-frontend
 
 ## Prerequisites
 
@@ -34,6 +36,8 @@ curl http://localhost:4000/api/health
 | `npm start`         | Run the compiled build (production)          |
 | `npm run typecheck` | Type-check without emitting files            |
 | `npm run lint`      | ESLint                                       |
+| `npm test`          | API tests, once (see **Tests** below)        |
+| `npm run test:watch`| API tests, re-run on save                    |
 | `npm run format`    | Format all files with Prettier               |
 | `npm run db:up`     | Start the MongoDB container                  |
 | `npm run db:down`   | Stop and remove the container (data is kept) |
@@ -48,10 +52,13 @@ Validated at startup by `src/config/env.ts`: the server refuses to start if any 
 | `NODE_ENV`       | `development`                         | `development` \| `test` \| `production`                                                      |
 | `PORT`           | `4000`                                | Defaults to 4000                                                                             |
 | `MONGODB_URI`    | `mongodb://127.0.0.1:27017/taskboard` | Required. Atlas uses `mongodb+srv://...`                                                     |
-| `CLIENT_ORIGIN`  | `http://localhost:5173`               | Frontend origin allowed by CORS                                                              |
+| `CLIENT_ORIGIN`  | `http://localhost:5173`               | Frontend origin: allowed by CORS and used to build the links in reset/invite emails. Set to the deployed frontend URL in production |
 | `JWT_SECRET`     | 96 random hex characters              | Required, min 32 chars. Signs login JWTs                                                     |
 | `SENDGRID_API_KEY` | `SG....`                            | Optional in development (emails are printed in the terminal instead). Required in production |
 | `MAIL_FROM`      | `Tasklane <you@gmail.com>`            | Sender address. Must exactly match a sender verified in SendGrid (Single Sender)             |
+| `CLOUDINARY_CLOUD_NAME` | `abcd1234`                     | Optional. Profile pictures are stored in Cloudinary (free tier). Without the three values the app runs, but avatar upload answers `503 AVATAR_UNAVAILABLE` |
+| `CLOUDINARY_API_KEY`    | `123456789012345`              | Optional (see above)                                                                         |
+| `CLOUDINARY_API_SECRET` | `s3cr3t…`                      | Optional (see above). Keep it out of git                                                     |
 
 ## API
 
@@ -162,6 +169,18 @@ today>&dueTo=<end of today>` in the user's time zone, so the server never needs 
 - Tasks have no owner field: a task belongs to the owner of its board. Another user's task → `404 TASK_NOT_FOUND`,
   another user's board → `404 BOARD_NOT_FOUND`.
 
+### Profile (all require login)
+
+| Method | Path                   | Description                                                                                                                                                   |
+| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PATCH  | `/api/users/me`        | Body `{name}` (1–50 chars) → `200 {user}`                                                                                                                     |
+| POST   | `/api/users/me/avatar` | `multipart/form-data`, field `avatar` (JPG/PNG/WEBP, ≤ 2 MB) → `200 {user}` with the new `avatarUrl`. `400 NO_FILE` / `INVALID_IMAGE`, `413 PAYLOAD_TOO_LARGE`, `503 AVATAR_UNAVAILABLE` (Cloudinary not configured) |
+| DELETE | `/api/users/me/avatar` | `200 {user}` with `avatarUrl: null`                                                                                                                           |
+
+The picture is uploaded server-side to Cloudinary and resized to 256×256 WebP (one image per user: re-uploading
+replaces it, removing deletes it), so the API only ever stores a URL. Changing the password is
+`POST /api/auth/change-password` (see Auth) and logs out every other session.
+
 ### Error format
 
 Every error has the same shape:
@@ -171,15 +190,30 @@ Every error has the same shape:
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Invalid request data",
-    "details": [{ "path": "email", "message": "Invalid email address" }]
+    "details": [{ "path": "email", "message": "Enter a valid email address" }]
   }
 }
 ```
 
-`details` is only present for validation errors. Codes so far: `NOT_FOUND`, `VALIDATION_ERROR`,
-`INVALID_ID`, `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`,
-`INVALID_CREDENTIALS`, `UNAUTHORIZED`, `INVALID_RESET_TOKEN`, `INVALID_CURRENT_PASSWORD`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`,
-`USER_NOT_FOUND`, `ALREADY_SHARED`, `CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INVALID_INVITE`, `INTERNAL_ERROR`.
+`details` is only present for validation errors. Codes: `NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_ID`,
+`INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`, `INVALID_CREDENTIALS`, `UNAUTHORIZED`,
+`INVALID_RESET_TOKEN`, `INVALID_CURRENT_PASSWORD`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`, `ALREADY_SHARED`,
+`CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INVALID_INVITE`, `INVITE_EMAIL_MISMATCH`, `INVITE_NOT_FOUND`, `EMAIL_FAILED`,
+`NO_FILE`, `INVALID_IMAGE`, `INVALID_UPLOAD`, `AVATAR_UNAVAILABLE`, `INTERNAL_ERROR`.
+
+## Tests
+
+```bash
+npm test
+```
+
+179 integration tests (Vitest + supertest) run against the real Express app (`createApp()`, no port) and a
+throwaway in-memory MongoDB (`mongodb-memory-server`) — nothing is mocked except the email sender, which lets
+tests read the reset and invite links that "were sent". Covered: every auth, boards/sharing/invites and tasks
+endpoint — validation, the owner / viewer / stranger / logged-out access matrix, and the security behaviour
+(identical login error for unknown email and wrong password, session revocation on logout / password change /
+reset, invites bound to one email and usable once). The first run downloads a MongoDB binary (~100 MB) into the
+OS temp folder; the suite then takes ~25 s.
 
 ## Project structure
 
