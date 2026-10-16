@@ -34,33 +34,3 @@ export function boardInviteEmail(
     }),
   };
 }
-
-// Sent when a board is shared with someone who ALREADY has an account: access is granted at once,
-// so this is just a heads-up with a link to their Boards page (no token involved).
-export function boardSharedEmail(
-  to: string,
-  link: string,
-  inviterName: string,
-  boardTitle: string,
-): Email {
-  const safeInviter = escapeHtml(inviterName);
-  const safeTitle = escapeHtml(boardTitle);
-  return {
-    to,
-    subject: `${inviterName} shared "${boardTitle}" with you on Tasklane`,
-    text: [
-      `${inviterName} shared the board "${boardTitle}" with you on Tasklane (view-only).`,
-      '',
-      "It's already on your Boards page. Log in to see it:",
-      link,
-    ].join('\n'),
-    html: renderEmailHtml({
-      heading: `${inviterName} shared a board with you`,
-      paragraphs: [
-        `<strong>${safeInviter}</strong> shared the board "<strong>${safeTitle}</strong>" with you on Tasklane (view-only).`,
-        "It's already on your Boards page.",
-      ],
-      button: { label: 'Open Tasklane', href: link },
-    }),
-  };
-}

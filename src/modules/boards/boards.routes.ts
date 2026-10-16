@@ -15,11 +15,9 @@ boardsRouter.get('/:id', boardsController.getOne);
 boardsRouter.patch('/:id', validateBody(updateBoardSchema), boardsController.update);
 boardsRouter.delete('/:id', boardsController.remove);
 
-// Sharing (owner only: viewers get 403, strangers 404)
+// Sharing (owner only: viewers get 403, strangers 404). Access is only ever granted when the
+// invited person accepts the emailed invite (see /api/invites); the owner can revoke it here.
 boardsRouter.get('/:id/shares', boardsController.sharing);
-boardsRouter.post('/:id/shares', validateBody(shareBoardSchema), boardsController.share);
 boardsRouter.delete('/:id/shares/:userId', boardsController.unshare);
-// Share with an email: instant access if it has an account, otherwise an emailed invite bound
-// to that address. DELETE withdraws a pending invite.
 boardsRouter.post('/:id/invites', validateBody(shareBoardSchema), boardsController.sendInvite);
 boardsRouter.delete('/:id/invites/:email', boardsController.removeInvite);

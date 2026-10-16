@@ -5,10 +5,10 @@ import { AppError } from '../../utils/AppError.js';
 import { sendEmail } from '../../utils/email.js';
 import { TaskModel } from '../tasks/task.model.js';
 import { UserModel } from '../users/user.model.js';
-import { boardInviteEmail, boardSharedEmail } from './boards.emails.js';
+import { boardInviteEmail } from './boards.emails.js';
 import { BoardModel, type BoardDocument } from './board.model.js';
 import { toBoardDto, type BoardRole, type InviteDto, type ShareDto } from './board.dto.js';
-import type { CreateBoardInput, ShareBoardInput, UpdateBoardInput } from './boards.schema.js';
+import type { CreateBoardInput, UpdateBoardInput } from './boards.schema.js';
 
 // Every function takes the logged-in user's id, and every query includes it.
 // A user may SEE a board they own or that is shared with them; only the OWNER may change it.
@@ -160,10 +160,10 @@ export async function getSharing(userId: string, boardId: string) {
   return { shares: await sharesForBoard(board), invites: invitesForBoard(board) };
 }
 
-// Owner shares a board with an email address (like "Share with people" in Google Docs):
-//  - the email already has an account → they get access right away (+ a heads-up email)
-//  - no account yet → a pending invite BOUND to that email; the emailed link only works for a user
-//    logged in with that exact address, and stops working once used
+// Owner invites an email address. Nobody gets a board pushed on them: access is granted only when
+// that person ACCEPTS the emailed invite while logged in with that exact email — the same whether
+// or not the address has an account yet. A forwarded link or a sign-up with another email can't
+// use it, and the link stops working once accepted.
 export async function sendInvite(userId: string, boardId: string, email: string) {
   const board = await getOwnBoard(userId, boardId);
   const inviter = await UserModel.findById(userId).select('name email');
@@ -171,25 +171,15 @@ export async function sendInvite(userId: string, boardId: string, email: string)
   if (inviter?.email === email) {
     throw new AppError(400, 'CANNOT_SHARE_WITH_SELF', "You can't share a board with yourself");
   }
-
+  // Already a viewer (only possible when the address has an account)? Nothing to invite.
   const target = await UserModel.findOne({ email }).select('_id');
-  if (target) {
-    const added = await addViewer(board._id, target._id);
-    if (!added) {
-      throw new AppError(409, 'ALREADY_SHARED', 'This board is already shared with this person');
-    }
-    // A pending invite for this address (sent before they signed up) is now pointless
-    await BoardModel.updateOne({ _id: board._id }, { $pull: { invites: { email } } });
-    // Access is already granted, so a failed heads-up email isn't worth failing the request over
-    sendEmail(boardSharedEmail(email, `${env.CLIENT_ORIGIN}/boards`, inviterName, board.title)).catch(
-      (error: unknown) => console.error('Failed to send board shared email:', error),
-    );
-    return { status: 'shared' as const, ...(await getSharing(userId, boardId)) };
+  if (target && board.sharedWith.some((share) => share.user.equals(target._id))) {
+    throw new AppError(409, 'ALREADY_SHARED', 'This board is already shared with this person');
   }
 
-  // No account yet: (re)issue an invite for this email with a fresh token. Sending again replaces
-  // the earlier one, so only the latest emailed link works. (One update per operator: MongoDB
-  // doesn't allow $pull and $push on the same field in a single update.)
+  // (Re)issue an invite for this email with a fresh token. Sending again replaces the earlier
+  // one, so only the latest emailed link works. (One update per operator: MongoDB doesn't allow
+  // $pull and $push on the same field in a single update.)
   const token = crypto.randomBytes(24).toString('base64url');
   await BoardModel.updateOne({ _id: board._id }, { $pull: { invites: { email } } });
   await BoardModel.updateOne(
@@ -212,7 +202,7 @@ export async function sendInvite(userId: string, boardId: string, email: string)
       "Couldn't send the invite email. Please try again in a moment.",
     );
   }
-  return { status: 'invited' as const, ...(await getSharing(userId, boardId)) };
+  return getSharing(userId, boardId);
 }
 
 // Owner withdraws a pending emailed invite; its link stops working
@@ -271,25 +261,6 @@ export async function acceptInvite(userId: string, token: string) {
   // Used up: the same link can't be opened again from another browser or account
   await BoardModel.updateOne({ _id: board._id }, { $pull: { invites: { token } } });
   return { boardId: board.id };
-}
-
-export async function shareBoard(userId: string, boardId: string, input: ShareBoardInput) {
-  const board = await getOwnBoard(userId, boardId);
-
-  const target = await UserModel.findOne({ email: input.email });
-  if (!target) {
-    throw new AppError(404, 'USER_NOT_FOUND', 'No account with this email');
-  }
-  if (target._id.equals(userId)) {
-    throw new AppError(400, 'CANNOT_SHARE_WITH_SELF', "You can't share a board with yourself");
-  }
-
-  const added = await addViewer(board._id, target._id);
-  if (!added) {
-    throw new AppError(409, 'ALREADY_SHARED', 'This board is already shared with this person');
-  }
-
-  return listShares(userId, boardId);
 }
 
 export async function unshareBoard(userId: string, boardId: string, targetUserId: string) {

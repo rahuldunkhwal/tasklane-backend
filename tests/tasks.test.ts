@@ -5,7 +5,7 @@ import {
   createBoard,
   createTask,
   errorCode,
-  shareBoard,
+  joinViaInvite,
   signUp,
   UNKNOWN_ID,
   type Client,
@@ -41,7 +41,7 @@ beforeEach(async () => {
 // A second user who can see the owner's board but not change it
 async function makeViewer(): Promise<TestUser> {
   const viewer = await signUp();
-  await shareBoard(owner.client, board.id, viewer.email);
+  await joinViaInvite(owner.client, board.id, viewer);
   return viewer;
 }
 
@@ -703,7 +703,7 @@ describe('PATCH /api/tasks/:id/move (drag and drop)', () => {
   it("answers 404 for a target board I cannot see and 403 for one I'm only a viewer of", async () => {
     const stranger = await signUp();
     const theirs = await createBoard(stranger.client, 'Theirs');
-    await shareBoard(stranger.client, theirs.id, owner.email); // owner becomes a viewer of it
+    await joinViaInvite(stranger.client, theirs.id, owner); // owner becomes a viewer of it
 
     const hidden = await move(owner.client, a.id, UNKNOWN_ID, 0);
     expect(hidden.status).toBe(404);

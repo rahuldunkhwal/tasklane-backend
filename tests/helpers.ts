@@ -61,13 +61,18 @@ export async function createTask(c: Client, boardId: string, fields: Record<stri
   };
 }
 
-// Gives `email`'s user view-only access to the board (the owner's client must call this)
-export async function shareBoard(ownerClient: Client, boardId: string, email: string) {
-  const res = await ownerClient.post(`/api/boards/${boardId}/shares`).send({ email });
-  if (res.status !== 201) {
-    throw new Error(`shareBoard helper failed: ${res.status} ${JSON.stringify(res.body)}`);
+// Makes `user` a viewer of the board the only way there is: the owner invites their email and
+// they accept the emailed invite (the mocked sender records the email, so we can read the link).
+export async function joinViaInvite(ownerClient: Client, boardId: string, user: TestUser) {
+  const invite = await ownerClient.post(`/api/boards/${boardId}/invites`).send({ email: user.email });
+  if (invite.status !== 200) {
+    throw new Error(`joinViaInvite: invite failed: ${invite.status} ${JSON.stringify(invite.body)}`);
   }
-  return res.body;
+  const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+  const accept = await user.client.post(`/api/invites/${token}/accept`);
+  if (accept.status !== 200) {
+    throw new Error(`joinViaInvite: accept failed: ${accept.status} ${JSON.stringify(accept.body)}`);
+  }
 }
 
 // Emails "sent" during the current test (the real sender is mocked in tests/setup.ts)

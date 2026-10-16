@@ -7,9 +7,9 @@ import {
   createTask,
   errorCode,
   INVITE_TOKEN,
+  joinViaInvite,
   lastEmail,
   sentEmails,
-  shareBoard,
   signUp,
   tokenFromEmail,
   UNKNOWN_ID,
@@ -32,7 +32,7 @@ beforeEach(async () => {
 
 async function makeViewer(): Promise<TestUser> {
   const viewer = await signUp();
-  await shareBoard(owner.client, board.id, viewer.email);
+  await joinViaInvite(owner.client, board.id, viewer);
   return viewer;
 }
 
@@ -81,7 +81,7 @@ describe('GET /api/boards', () => {
   it('lists boards shared with me after my own, as viewer with the owner name', async () => {
     const viewer = await signUp();
     const mine = await createBoard(viewer.client, 'My own');
-    await shareBoard(owner.client, board.id, viewer.email);
+    await joinViaInvite(owner.client, board.id, viewer);
 
     const boards = await listBoards(viewer.client);
 
@@ -93,8 +93,8 @@ describe('GET /api/boards', () => {
   it('orders shared boards by when the board was created, not when it was shared', async () => {
     const later = await createBoard(owner.client, 'Created later');
     const viewer = await signUp();
-    await shareBoard(owner.client, later.id, viewer.email); // shared first
-    await shareBoard(owner.client, board.id, viewer.email); // shared second, but older board
+    await joinViaInvite(owner.client, later.id, viewer); // joined first
+    await joinViaInvite(owner.client, board.id, viewer); // joined second, but older board
 
     const boards = await listBoards(viewer.client);
 
@@ -361,8 +361,8 @@ describe('GET /api/boards/:id/shares', () => {
   it('lists shared users in the order they were added, never the owner', async () => {
     const bob = await signUp({ name: 'Bob', email: 'bob@example.com' });
     const amy = await signUp({ name: 'Amy', email: 'amy@example.com' });
-    await shareBoard(owner.client, board.id, bob.email);
-    await shareBoard(owner.client, board.id, amy.email);
+    await joinViaInvite(owner.client, board.id, bob);
+    await joinViaInvite(owner.client, board.id, amy);
 
     const res = await owner.client.get(`/api/boards/${board.id}/shares`);
 
@@ -380,89 +380,6 @@ describe('GET /api/boards/:id/shares', () => {
     expect(errorCode(await stranger.client.get(`/api/boards/${board.id}/shares`))).toBe('BOARD_NOT_FOUND');
     expect(errorCode(await owner.client.get(`/api/boards/${UNKNOWN_ID}/shares`))).toBe('BOARD_NOT_FOUND');
     expect(errorCode(await owner.client.get('/api/boards/bad/shares'))).toBe('INVALID_ID');
-  });
-});
-
-describe('POST /api/boards/:id/shares (share by email)', () => {
-  it('requires login', async () => {
-    expect((await client().post(`/api/boards/${board.id}/shares`).send({ email: 'a@b.co' })).status).toBe(401);
-  });
-
-  it('gives the user view-only access and returns the full share list', async () => {
-    const viewer = await signUp({ name: 'Vera', email: 'vera@example.com' });
-
-    const res = await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: 'vera@example.com' });
-
-    expect(res.status).toBe(201);
-    expect(res.body).toEqual({ shares: [{ userId: viewer.id, name: 'Vera', email: 'vera@example.com' }] });
-    const asViewer = await viewer.client.get(`/api/boards/${board.id}`);
-    expect(asViewer.body.board).toMatchObject({ role: 'viewer', ownerName: 'Olivia Owner' });
-    expect(sentEmails()).toEqual([]); // sharing with an existing account sends no email
-  });
-
-  it('matches the email case-insensitively and ignores surrounding spaces', async () => {
-    const viewer = await signUp({ email: 'case@example.com' });
-
-    const res = await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: '  CASE@Example.COM  ' });
-
-    expect(res.status).toBe(201);
-    expect(res.body.shares[0].userId).toBe(viewer.id);
-  });
-
-  it.each([
-    [{}, 'Email is required'],
-    [{ email: '   ' }, 'Email is required'],
-    [{ email: 'nope' }, 'Enter a valid email address'],
-    [{ email: 123 }, 'Email must be text'],
-  ])('rejects %j', async (body, message) => {
-    const res = await owner.client.post(`/api/boards/${board.id}/shares`).send(body);
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.details).toEqual([{ path: 'email', message }]);
-  });
-
-  it('answers 404 when no account has that email', async () => {
-    const res = await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: 'nobody@example.com' });
-
-    expect(res.status).toBe(404);
-    expect(res.body.error).toEqual({ code: 'USER_NOT_FOUND', message: 'No account with this email' });
-  });
-
-  it('refuses sharing with yourself', async () => {
-    const res = await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: owner.email });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toEqual({
-      code: 'CANNOT_SHARE_WITH_SELF',
-      message: "You can't share a board with yourself",
-    });
-  });
-
-  it('refuses sharing twice with the same person', async () => {
-    const viewer = await makeViewer();
-
-    const res = await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: viewer.email });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toEqual({
-      code: 'ALREADY_SHARED',
-      message: 'This board is already shared with this person',
-    });
-    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.shares).toHaveLength(1);
-  });
-
-  it('is owner-only: viewers get 403, strangers 404', async () => {
-    const viewer = await makeViewer();
-    const stranger = await signUp();
-    const third = await signUp();
-
-    const asViewer = await viewer.client.post(`/api/boards/${board.id}/shares`).send({ email: third.email });
-    expect(asViewer.status).toBe(403);
-    expect(errorCode(asViewer)).toBe('READ_ONLY');
-
-    const asStranger = await stranger.client.post(`/api/boards/${board.id}/shares`).send({ email: third.email });
-    expect(asStranger.status).toBe(404);
-    expect(errorCode(asStranger)).toBe('BOARD_NOT_FOUND');
   });
 });
 
@@ -530,7 +447,6 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      status: 'invited',
       shares: [],
       invites: [{ email: 'new.person+tag@example.com', createdAt: expect.any(String) }],
     });
@@ -555,33 +471,35 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     expect(sharing.body.invites.map((i: { email: string }) => i.email)).toEqual(['new.person+tag@example.com']);
   });
 
-  it('gives an existing account access right away and emails them a heads-up', async () => {
+  it('invites an existing account the same way: no access until they accept', async () => {
     const friend = await signUp({ name: 'Fay', email: 'fay@example.com' });
 
     const res = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'FAY@example.com' });
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('shared');
-    expect(res.body.shares).toEqual([{ userId: friend.id, name: 'Fay', email: 'fay@example.com' }]);
-    expect(res.body.invites).toEqual([]);
+    expect(res.body).toEqual({
+      shares: [],
+      invites: [{ email: 'fay@example.com', createdAt: expect.any(String) }],
+    });
+    expect((await friend.client.get(`/api/boards/${board.id}`)).status).toBe(404); // nothing yet
+    expect(lastEmail().to).toBe('fay@example.com');
+    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    expect((await friend.client.post(`/api/invites/${token}/accept`)).status).toBe(200);
     expect((await friend.client.get(`/api/boards/${board.id}`)).body.board.role).toBe('viewer');
-    const email = lastEmail();
-    expect(email.to).toBe('fay@example.com');
-    expect(email.subject).toBe('Olivia Owner shared "Launch plan" with you on Tasklane');
-    expect(email.text).toContain(`${CLIENT_ORIGIN}/boards`);
-    expect(email.text).not.toContain('/invite/'); // no token: they already have access
   });
 
   it('refuses your own address and people who already have access', async () => {
+    const viewer = await makeViewer();
+    const emailsBefore = sentEmails().length;
+
     const self = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: owner.email });
     expect(self.status).toBe(400);
     expect(errorCode(self)).toBe('CANNOT_SHARE_WITH_SELF');
 
-    const viewer = await makeViewer();
     const again = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: viewer.email });
     expect(again.status).toBe(409);
     expect(errorCode(again)).toBe('ALREADY_SHARED');
-    expect(sentEmails()).toEqual([]);
+    expect(sentEmails()).toHaveLength(emailsBefore); // neither attempt sent anything
   });
 
   it('sending again replaces the earlier invite, so only the latest link works', async () => {
@@ -640,6 +558,7 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
   it('is owner-only: viewers get 403, strangers 404, and no email goes out', async () => {
     const viewer = await makeViewer();
     const stranger = await signUp();
+    const emailsBefore = sentEmails().length;
 
     expect(errorCode(await viewer.client.post(`/api/boards/${board.id}/invites`).send({ email: 'x@y.co' }))).toBe(
       'READ_ONLY',
@@ -647,7 +566,7 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     expect(
       errorCode(await stranger.client.post(`/api/boards/${board.id}/invites`).send({ email: 'x@y.co' })),
     ).toBe('BOARD_NOT_FOUND');
-    expect(sentEmails()).toEqual([]);
+    expect(sentEmails()).toHaveLength(emailsBefore);
   });
 });
 
@@ -761,7 +680,8 @@ describe('routes that do not exist under /api/boards', () => {
     expect(errorCode(loggedIn)).toBe('NOT_FOUND');
 
     expect((await client().get(`/api/boards/${board.id}/nothing/here`)).status).toBe(401);
-    // the public invite link endpoint is gone
+    // gone on purpose: no public invite link, and no way to add a viewer without their consent
     expect((await owner.client.post(`/api/boards/${board.id}/invite-link/reset`)).status).toBe(404);
+    expect((await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: 'x@y.co' })).status).toBe(404);
   });
 });

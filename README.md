@@ -97,16 +97,12 @@ with them. Deleting a board also deletes its tasks (and its shares).
 
 | Method | Path                             | Description                                                                                                                                                                                      |
 | ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], invites: [{email, createdAt}]}` (viewers + pending emailed invites)                                                                           |
-| POST   | `/api/boards/:id/invites`        | Owner only. Body `{email}` → `200 {status: 'shared' \| 'invited', shares, invites}`. `400 CANNOT_SHARE_WITH_SELF`, `409 ALREADY_SHARED`, `502 EMAIL_FAILED`                                   |
-| DELETE | `/api/boards/:id/invites/:email` | Owner only → `204`: withdraws a pending invite (its link stops working). `404 INVITE_NOT_FOUND`                                                                                                  |
-| POST   | `/api/boards/:id/shares`         | Owner only. Body `{email}` → `201 {shares}`: share directly with an existing account. `404 USER_NOT_FOUND`, `409 ALREADY_SHARED`, `400 CANNOT_SHARE_WITH_SELF`                                 |
-| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`. `404 SHARE_NOT_FOUND`                                                                                                                                                        |
+| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], invites: [{email, createdAt}]}` (viewers + pending invites)  |
+| POST   | `/api/boards/:id/invites`        | Owner only. Body `{email}` → `200 {shares, invites}`. `400 CANNOT_SHARE_WITH_SELF`, `409 ALREADY_SHARED`, `502 EMAIL_FAILED` |
+| DELETE | `/api/boards/:id/invites/:email` | Owner only → `204`: withdraws a pending invite (its link stops working). `404 INVITE_NOT_FOUND`                   |
+| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`: removes a viewer. `404 SHARE_NOT_FOUND`                                                      |
 
-**How "invite by email" works** (like "Share with people" in Google Docs):
-
-- the email **already has an account** → `status: 'shared'`: they are added as a viewer immediately and get a heads-up email linking to `CLIENT_ORIGIN/boards`;
-- **no account yet** → `status: 'invited'`: a pending invite **bound to that email** is stored on the board and an email with `CLIENT_ORIGIN/invite/<token>?email=<address>` is sent. Sending again replaces the earlier invite (only the latest link works).
+**How sharing works — invite, then accept.** The owner invites an email address; a pending invite **bound to that email** is stored on the board and an email with `CLIENT_ORIGIN/invite/<token>?email=<address>` is sent. Nobody is added to a board without their consent: access is granted only when that person opens the link and accepts while logged in with that exact email (signing up first if they have no account yet). Sending again replaces the earlier invite (only the latest link works).
 
 | Method | Path                         | Description                                                                                                                                                              |
 | ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

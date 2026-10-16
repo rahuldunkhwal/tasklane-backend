@@ -61,15 +61,6 @@ export const removeInvite: RequestHandler<{ id: string; email: string }> = async
   res.status(204).end();
 };
 
-export const share: RequestHandler<{ id: string }> = async (req, res) => {
-  const shares = await boardsService.shareBoard(
-    getAuthUser(req).id,
-    req.params.id,
-    req.body as ShareBoardInput,
-  );
-  res.status(201).json({ shares });
-};
-
 export const unshare: RequestHandler<{ id: string; userId: string }> = async (req, res) => {
   await boardsService.unshareBoard(getAuthUser(req).id, req.params.id, req.params.userId);
   res.status(204).end();
