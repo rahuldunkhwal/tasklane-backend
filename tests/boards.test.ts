@@ -21,7 +21,6 @@ const CLIENT_ORIGIN = 'http://localhost:5173'; // set in tests/setup.ts
 const OWN_BOARD_KEYS = ['createdAt', 'id', 'role', 'title', 'updatedAt'];
 const SHARED_BOARD_KEYS = [...OWN_BOARD_KEYS, 'ownerName'].sort();
 const TOKEN = /^[A-Za-z0-9_-]{32}$/; // crypto.randomBytes(24) as base64url
-const INVITE_LINK = new RegExp(`^${CLIENT_ORIGIN}/invite/([A-Za-z0-9_-]{32})$`);
 
 let owner: TestUser;
 let board: { id: string; title: string };
@@ -37,13 +36,11 @@ async function makeViewer(): Promise<TestUser> {
   return viewer;
 }
 
-// The board's invite token, created lazily by the first request that needs it
-async function inviteToken(c: Client, boardId: string): Promise<string> {
-  const res = await c.get(`/api/boards/${boardId}/shares`);
+// Emails an invite to `email` (an address without an account) and returns the token in that email
+async function emailInvite(c: Client, boardId: string, email: string): Promise<string> {
+  const res = await c.post(`/api/boards/${boardId}/invites`).send({ email });
   expect(res.status).toBe(200);
-  const token = res.body.inviteLink.match(INVITE_LINK)?.[1];
-  if (!token) throw new Error(`unexpected invite link: ${res.body.inviteLink}`);
-  return token;
+  return tokenFromEmail(lastEmail(), INVITE_TOKEN);
 }
 
 async function listBoards(c: Client) {
@@ -112,7 +109,7 @@ describe('GET /api/boards', () => {
 
   it("still lists a shared board when the owner's account no longer exists", async () => {
     const viewer = await makeViewer();
-    const token = await inviteToken(owner.client, board.id);
+    const token = await emailInvite(owner.client, board.id, 'pending@example.com');
     await UserModel.deleteOne({ _id: owner.id }); // e.g. removed directly in the database
 
     const boards = await listBoards(viewer.client);
@@ -122,7 +119,11 @@ describe('GET /api/boards', () => {
     expect((await viewer.client.get(`/api/boards/${board.id}`)).body.board.ownerName).toBe('Unknown');
     const info = await client().get(`/api/invites/${token}`);
     expect(info.status).toBe(200);
-    expect(info.body).toEqual({ boardTitle: 'Launch plan', inviterName: 'Unknown' });
+    expect(info.body).toEqual({
+      boardTitle: 'Launch plan',
+      inviterName: 'Unknown',
+      invitedEmail: 'pending@example.com',
+    });
   });
 });
 
@@ -321,9 +322,9 @@ describe('DELETE /api/boards/:id', () => {
     expect(errorCode(again)).toBe('BOARD_NOT_FOUND');
   });
 
-  it('removes the board from viewers and kills its invite link', async () => {
+  it('removes the board from viewers and kills its pending invites', async () => {
     const viewer = await makeViewer();
-    const token = await inviteToken(owner.client, board.id);
+    const token = await emailInvite(owner.client, board.id, 'pending@example.com');
 
     await owner.client.delete(`/api/boards/${board.id}`);
 
@@ -350,27 +351,11 @@ describe('GET /api/boards/:id/shares', () => {
     expect((await client().get(`/api/boards/${board.id}/shares`)).status).toBe(401);
   });
 
-  it('returns the share list and a stable invite link (created on first request)', async () => {
-    const first = await owner.client.get(`/api/boards/${board.id}/shares`);
+  it('returns the viewers and the pending invites (nothing else: no public link)', async () => {
+    const res = await owner.client.get(`/api/boards/${board.id}/shares`);
 
-    expect(first.status).toBe(200);
-    expect(first.body.shares).toEqual([]);
-    expect(first.body.inviteLink).toMatch(INVITE_LINK);
-
-    const second = await owner.client.get(`/api/boards/${board.id}/shares`);
-    expect(second.body.inviteLink).toBe(first.body.inviteLink);
-  });
-
-  it('hands out one and the same link when the dialog is opened in several tabs at once', async () => {
-    // Several requests race to create the token on a board that has none yet
-    const results = await Promise.all(
-      Array.from({ length: 5 }, () => owner.client.get(`/api/boards/${board.id}/shares`)),
-    );
-
-    const links = results.map((res) => res.body.inviteLink as string);
-    expect(new Set(links).size).toBe(1);
-    const token = links[0]?.match(INVITE_LINK)?.[1];
-    expect((await client().get(`/api/invites/${token}`)).status).toBe(200);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ shares: [], invites: [] });
   });
 
   it('lists shared users in the order they were added, never the owner', async () => {
@@ -531,20 +516,9 @@ describe('DELETE /api/boards/:id/shares/:userId (remove access)', () => {
     );
     expect((await viewer.client.get(`/api/boards/${board.id}`)).status).toBe(200);
   });
-
-  it('does not revoke the invite link: a removed viewer who still has it can rejoin', async () => {
-    const viewer = await makeViewer();
-    const token = await inviteToken(owner.client, board.id);
-    await owner.client.delete(`/api/boards/${board.id}/shares/${viewer.id}`);
-
-    const rejoin = await viewer.client.post(`/api/invites/${token}/accept`);
-
-    expect(rejoin.status).toBe(200);
-    expect((await viewer.client.get(`/api/boards/${board.id}`)).status).toBe(200);
-  });
 });
 
-describe('POST /api/boards/:id/invites (email the invite link)', () => {
+describe('POST /api/boards/:id/invites (invite by email)', () => {
   it('requires login', async () => {
     expect((await client().post(`/api/boards/${board.id}/invites`).send({ email: 'a@b.co' })).status).toBe(401);
   });
@@ -555,10 +529,11 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
       .send({ email: '  New.Person+tag@Example.com ' });
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('invited');
-    expect(res.body.shares).toEqual([]);
-    expect(res.body.invites).toEqual([{ email: 'new.person+tag@example.com', createdAt: expect.any(String) }]);
-    expect(res.body.inviteLink).toMatch(INVITE_LINK);
+    expect(res.body).toEqual({
+      status: 'invited',
+      shares: [],
+      invites: [{ email: 'new.person+tag@example.com', createdAt: expect.any(String) }],
+    });
 
     const email = lastEmail();
     expect(email.to).toBe('new.person+tag@example.com');
@@ -567,8 +542,6 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
     expect(token).toMatch(TOKEN);
     expect(email.text).toContain(`${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`);
     expect(email.html).toContain(`${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`);
-    // it is NOT the board-wide link: this token belongs to that one email
-    expect(token).not.toBe(await inviteToken(owner.client, board.id));
     // the landing page learns who it was sent to (to pre-fill the form / warn the wrong account)
     const info = await client().get(`/api/invites/${token}`);
     expect(info.status).toBe(200);
@@ -612,10 +585,8 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
   });
 
   it('sending again replaces the earlier invite, so only the latest link works', async () => {
-    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'late@example.com' });
-    const first = tokenFromEmail(lastEmail(), INVITE_TOKEN);
-    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'late@example.com' });
-    const second = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    const first = await emailInvite(owner.client, board.id, 'late@example.com');
+    const second = await emailInvite(owner.client, board.id, 'late@example.com');
 
     expect(second).not.toBe(first);
     expect((await client().get(`/api/invites/${first}`)).status).toBe(404);
@@ -624,8 +595,7 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
   });
 
   it('lets the owner withdraw a pending invite, which kills its link', async () => {
-    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'Pending@Example.com' });
-    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    const token = await emailInvite(owner.client, board.id, 'Pending@Example.com');
 
     const res = await owner.client.delete(`/api/boards/${board.id}/invites/${encodeURIComponent('PENDING@example.com')}`);
 
@@ -681,71 +651,29 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
   });
 });
 
-describe('POST /api/boards/:id/invite-link/reset', () => {
-  it('requires login', async () => {
-    expect((await client().post(`/api/boards/${board.id}/invite-link/reset`)).status).toBe(401);
-  });
-
-  it('issues a new link and makes the old one stop working, keeping existing viewers', async () => {
-    const viewer = await makeViewer();
-    const oldToken = await inviteToken(owner.client, board.id);
-
-    const res = await owner.client.post(`/api/boards/${board.id}/invite-link/reset`);
-
-    expect(res.status).toBe(200);
-    const newToken = res.body.inviteLink.match(INVITE_LINK)?.[1];
-    expect(newToken).toMatch(TOKEN);
-    expect(newToken).not.toBe(oldToken);
-    expect(await inviteToken(owner.client, board.id)).toBe(newToken);
-
-    expect(errorCode(await client().get(`/api/invites/${oldToken}`))).toBe('INVALID_INVITE');
-    const joiner = await signUp();
-    expect(errorCode(await joiner.client.post(`/api/invites/${oldToken}/accept`))).toBe('INVALID_INVITE');
-    expect((await client().get(`/api/invites/${newToken}`)).status).toBe(200);
-    expect((await viewer.client.get(`/api/boards/${board.id}`)).status).toBe(200);
-  });
-
-  it('works on a board that never had a link yet', async () => {
-    const fresh = await createBoard(owner.client, 'Fresh');
-
-    const res = await owner.client.post(`/api/boards/${fresh.id}/invite-link/reset`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.inviteLink).toMatch(INVITE_LINK);
-  });
-
-  it('is owner-only', async () => {
-    const viewer = await makeViewer();
-    const stranger = await signUp();
-
-    expect(errorCode(await viewer.client.post(`/api/boards/${board.id}/invite-link/reset`))).toBe('READ_ONLY');
-    expect(errorCode(await stranger.client.post(`/api/boards/${board.id}/invite-link/reset`))).toBe(
-      'BOARD_NOT_FOUND',
-    );
-    expect(errorCode(await owner.client.post(`/api/boards/${UNKNOWN_ID}/invite-link/reset`))).toBe('BOARD_NOT_FOUND');
-    expect(errorCode(await owner.client.post('/api/boards/bad/invite-link/reset'))).toBe('INVALID_ID');
-  });
-});
-
 describe('GET /api/invites/:token (public)', () => {
-  it('tells a logged-out visitor which board and who invited them', async () => {
-    const token = await inviteToken(owner.client, board.id);
+  it('tells a logged-out visitor which board, who invited them and which email it is for', async () => {
+    const token = await emailInvite(owner.client, board.id, 'guest@example.com');
 
     const res = await client().get(`/api/invites/${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ boardTitle: 'Launch plan', inviterName: 'Olivia Owner' });
+    expect(res.body).toEqual({
+      boardTitle: 'Launch plan',
+      inviterName: 'Olivia Owner',
+      invitedEmail: 'guest@example.com',
+    });
   });
 
   it('reflects a later rename', async () => {
-    const token = await inviteToken(owner.client, board.id);
+    const token = await emailInvite(owner.client, board.id, 'guest@example.com');
     await owner.client.patch(`/api/boards/${board.id}`).send({ title: 'Renamed' });
 
     expect((await client().get(`/api/invites/${token}`)).body.boardTitle).toBe('Renamed');
   });
 
   it('answers 404 for unknown or almost-right tokens without leaking anything', async () => {
-    const token = await inviteToken(owner.client, board.id);
+    const token = await emailInvite(owner.client, board.id, 'guest@example.com');
 
     for (const bad of ['nope', `${token}x`, token.slice(0, -1), token.toUpperCase()]) {
       const res = await client().get(`/api/invites/${bad}`);
@@ -760,7 +688,7 @@ describe('GET /api/invites/:token (public)', () => {
 
 describe('POST /api/invites/:token/accept', () => {
   it('requires login', async () => {
-    const token = await inviteToken(owner.client, board.id);
+    const token = await emailInvite(owner.client, board.id, 'guest@example.com');
 
     const res = await client().post(`/api/invites/${token}/accept`);
 
@@ -768,67 +696,30 @@ describe('POST /api/invites/:token/accept', () => {
     expect(errorCode(res)).toBe('UNAUTHORIZED');
   });
 
-  it('makes the caller a viewer of the board', async () => {
-    const token = await inviteToken(owner.client, board.id);
-    const joiner = await signUp({ name: 'Jo' });
-
-    const res = await joiner.client.post(`/api/invites/${token}/accept`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ boardId: board.id });
-    const view = await joiner.client.get(`/api/boards/${board.id}`);
-    expect(view.body.board).toMatchObject({ role: 'viewer', ownerName: 'Olivia Owner' });
-    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.shares).toEqual([
-      { userId: joiner.id, name: 'Jo', email: joiner.email },
-    ]);
-  });
-
-  it('is idempotent: accepting twice does not add the viewer twice', async () => {
-    const token = await inviteToken(owner.client, board.id);
-    const joiner = await signUp();
-
-    await joiner.client.post(`/api/invites/${token}/accept`);
-    const again = await joiner.client.post(`/api/invites/${token}/accept`);
-
-    expect(again.status).toBe(200);
-    expect(again.body).toEqual({ boardId: board.id });
-    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.shares).toHaveLength(1);
-  });
-
-  it('is a no-op for the owner, who is never added to the share list', async () => {
-    const token = await inviteToken(owner.client, board.id);
-
-    const res = await owner.client.post(`/api/invites/${token}/accept`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ boardId: board.id });
-    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.shares).toEqual([]);
-    expect((await owner.client.get(`/api/boards/${board.id}`)).body.board.role).toBe('owner');
-  });
-
   it('accepts an emailed invite from the invited account, once only', async () => {
-    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'invitee@example.com' });
-    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    const token = await emailInvite(owner.client, board.id, 'invitee@example.com');
     const invitee = await signUp({ name: 'Ivy', email: 'invitee@example.com' });
 
     const res = await invitee.client.post(`/api/invites/${token}/accept`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ boardId: board.id });
-    expect((await invitee.client.get(`/api/boards/${board.id}`)).body.board.role).toBe('viewer');
+    const view = await invitee.client.get(`/api/boards/${board.id}`);
+    expect(view.body.board).toMatchObject({ role: 'viewer', ownerName: 'Olivia Owner' });
     const sharing = await owner.client.get(`/api/boards/${board.id}/shares`);
-    expect(sharing.body.shares.map((s: { email: string }) => s.email)).toEqual(['invitee@example.com']);
+    expect(sharing.body.shares).toEqual([{ userId: invitee.id, name: 'Ivy', email: 'invitee@example.com' }]);
     expect(sharing.body.invites).toEqual([]); // no longer pending
-    // used up: the same link opened again (another browser, another account) is dead
+    // used up: the same link opened again (another browser, another account, even themselves) is dead
+    expect(errorCode(await invitee.client.post(`/api/invites/${token}/accept`))).toBe('INVALID_INVITE');
     const another = await signUp();
     const reuse = await another.client.post(`/api/invites/${token}/accept`);
     expect(reuse.status).toBe(404);
     expect(errorCode(reuse)).toBe('INVALID_INVITE');
+    expect((await another.client.get(`/api/boards/${board.id}`)).status).toBe(404);
   });
 
   it('refuses an emailed invite from a different account, without granting access', async () => {
-    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'right@example.com' });
-    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    const token = await emailInvite(owner.client, board.id, 'right@example.com');
     const wrong = await signUp({ email: 'wrong@example.com' }); // e.g. changed the email on the sign-up form
 
     const res = await wrong.client.post(`/api/invites/${token}/accept`);
@@ -840,6 +731,16 @@ describe('POST /api/invites/:token/accept', () => {
     });
     expect((await wrong.client.get(`/api/boards/${board.id}`)).status).toBe(404);
     expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toHaveLength(1); // still pending
+  });
+
+  it("refuses the owner too: an invite is for the person it was sent to", async () => {
+    const token = await emailInvite(owner.client, board.id, 'someone@example.com');
+
+    const res = await owner.client.post(`/api/invites/${token}/accept`);
+
+    expect(res.status).toBe(403);
+    expect(errorCode(res)).toBe('INVITE_EMAIL_MISMATCH');
+    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.shares).toEqual([]);
   });
 
   it('answers 404 for an unknown token', async () => {
@@ -860,5 +761,7 @@ describe('routes that do not exist under /api/boards', () => {
     expect(errorCode(loggedIn)).toBe('NOT_FOUND');
 
     expect((await client().get(`/api/boards/${board.id}/nothing/here`)).status).toBe(401);
+    // the public invite link endpoint is gone
+    expect((await owner.client.post(`/api/boards/${board.id}/invite-link/reset`)).status).toBe(404);
   });
 });

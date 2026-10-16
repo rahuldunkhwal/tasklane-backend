@@ -152,52 +152,12 @@ async function addViewer(boardId: Types.ObjectId, userId: Types.ObjectId | strin
   return result.matchedCount > 0;
 }
 
-// ---------- Invite link ----------
+// ---------- Emailed invites ----------
 
-// The bearer token behind a board's invite link, created the first time it's needed
-async function ensureInviteToken(board: BoardDocument): Promise<string> {
-  if (board.inviteToken) return board.inviteToken;
-
-  // ONE atomic update: set a token only if the board still has none. When two requests race
-  // (Share opened in two tabs), the loser's filter no longer matches, so it reads back the
-  // winner's token instead of overwriting it, and both tabs hand out the same, live link.
-  const token = crypto.randomBytes(24).toString('base64url');
-  const updated = await BoardModel.findOneAndUpdate(
-    { _id: board._id, inviteToken: null }, // null also matches "field absent"
-    { $set: { inviteToken: token } },
-    { returnDocument: 'after' },
-  ).select('inviteToken');
-  const current = updated ?? (await BoardModel.findById(board._id).select('inviteToken'));
-  if (!current?.inviteToken) {
-    throw new AppError(404, 'BOARD_NOT_FOUND', 'Board not found'); // deleted in the meantime
-  }
-  board.inviteToken = current.inviteToken;
-  return current.inviteToken;
-}
-
-function inviteLinkFor(token: string): string {
-  return `${env.CLIENT_ORIGIN}/invite/${token}`;
-}
-
-// For the Share dialog: current viewers, pending emailed invites, and the board's invite link
+// For the Share dialog: current viewers + pending emailed invites (owner only)
 export async function getSharing(userId: string, boardId: string) {
   const board = await getOwnBoard(userId, boardId);
-  const token = await ensureInviteToken(board);
-  return {
-    shares: await sharesForBoard(board),
-    invites: invitesForBoard(board),
-    inviteLink: inviteLinkFor(token),
-  };
-}
-
-// Owner regenerates the invite link. The old link stops working immediately, which is how you
-// cut off access via a link that leaked or that a removed viewer still holds (the link is a
-// shared bearer token, so removing one person can't block them from it on its own).
-export async function resetInviteLink(userId: string, boardId: string) {
-  const board = await getOwnBoard(userId, boardId);
-  board.inviteToken = crypto.randomBytes(24).toString('base64url');
-  await board.save();
-  return { inviteLink: inviteLinkFor(board.inviteToken) };
+  return { shares: await sharesForBoard(board), invites: invitesForBoard(board) };
 }
 
 // Owner shares a board with an email address (like "Share with people" in Google Docs):
@@ -249,7 +209,7 @@ export async function sendInvite(userId: string, boardId: string, email: string)
     throw new AppError(
       502,
       'EMAIL_FAILED',
-      "Couldn't send the invite email. Copy the invite link and share it instead.",
+      "Couldn't send the invite email. Please try again in a moment.",
     );
   }
   return { status: 'invited' as const, ...(await getSharing(userId, boardId)) };
@@ -267,57 +227,49 @@ export async function removeInvite(userId: string, boardId: string, email: strin
   }
 }
 
-// A token is either the board-wide link (anyone with it may join) or an emailed invite (bound to
-// one address). This finds the board for either kind, or null.
+const INVALID_INVITE = () =>
+  new AppError(404, 'INVALID_INVITE', 'This invite link is invalid or no longer works');
+
+// Finds the board holding this (still pending) emailed-invite token, or null
 function findBoardByToken(token: string) {
-  return BoardModel.findOne({ $or: [{ inviteToken: token }, { 'invites.token': token }] });
+  return BoardModel.findOne({ 'invites.token': token });
 }
 
-// PUBLIC (no login): what the invite landing page shows before anyone signs in.
-// For an emailed invite it also says which address it was sent to, so the page can pre-fill the
-// form and warn someone logged in with a different account.
+// PUBLIC (no login): what the invite landing page shows before anyone signs in, including which
+// address the invite was sent to (to pre-fill the form / warn someone logged in as another account).
 export async function getInviteInfo(token: string) {
   const board = await findBoardByToken(token).populate<PopulatedOwner>('owner', 'name');
-  if (!board) {
-    throw new AppError(404, 'INVALID_INVITE', 'This invite link is invalid or no longer works');
-  }
-  const invite = board.invites.find((entry) => entry.token === token);
+  const invite = board?.invites.find((entry) => entry.token === token);
+  if (!board || !invite) throw INVALID_INVITE();
   return {
     boardTitle: board.title,
     inviterName: board.owner?.name ?? UNKNOWN_OWNER,
-    ...(invite && { invitedEmail: invite.email }),
+    invitedEmail: invite.email,
   };
 }
 
-// Logged-in user joins the board the link points to (as a viewer). Idempotent for the board-wide
-// link; an emailed invite additionally requires the matching account and works only once.
+// Logged-in user joins the board an emailed invite points to (as a viewer). The invite only
+// works for the account it was sent to, and only once.
 export async function acceptInvite(userId: string, token: string) {
   const board = await findBoardByToken(token);
-  if (!board) {
-    throw new AppError(404, 'INVALID_INVITE', 'This invite link is invalid or no longer works');
+  const invite = board?.invites.find((entry) => entry.token === token);
+  if (!board || !invite) throw INVALID_INVITE();
+
+  const user = await UserModel.findById(userId).select('email');
+  if (user?.email !== invite.email) {
+    throw new AppError(
+      403,
+      'INVITE_EMAIL_MISMATCH',
+      `This invite was sent to ${maskEmail(invite.email)}. Log in with that account to join.`,
+    );
   }
 
-  // null for the board-wide link; the pending entry for an emailed invite
-  const invite = board.inviteToken === token ? null : board.invites.find((e) => e.token === token);
-  if (invite) {
-    const user = await UserModel.findById(userId).select('email');
-    if (user?.email !== invite.email) {
-      throw new AppError(
-        403,
-        'INVITE_EMAIL_MISMATCH',
-        `This invite was sent to ${maskEmail(invite.email)}. Log in with that account to join.`,
-      );
-    }
-  }
-
-  // The owner opening their own link just goes to the board; no share to add.
+  // The owner can't invite themselves, so this is always someone else; already a viewer → no change
   if (!board.owner.equals(userId)) {
-    await addViewer(board._id, userId); // already a viewer → no change, still a success
+    await addViewer(board._id, userId);
   }
-  if (invite) {
-    // Used up: the same link can't be opened again from another browser or account
-    await BoardModel.updateOne({ _id: board._id }, { $pull: { invites: { token } } });
-  }
+  // Used up: the same link can't be opened again from another browser or account
+  await BoardModel.updateOne({ _id: board._id }, { $pull: { invites: { token } } });
   return { boardId: board.id };
 }
 

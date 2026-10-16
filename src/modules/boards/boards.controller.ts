@@ -35,14 +35,9 @@ export const remove: RequestHandler<{ id: string }> = async (req, res) => {
 
 // ---------- Sharing ----------
 
-// The viewers list + the board's invite link (owner only)
+// The viewers list + pending emailed invites (owner only)
 export const sharing: RequestHandler<{ id: string }> = async (req, res) => {
   res.json(await boardsService.getSharing(getAuthUser(req).id, req.params.id));
-};
-
-// Regenerate the invite link (the old one stops working)
-export const resetInviteLink: RequestHandler<{ id: string }> = async (req, res) => {
-  res.json(await boardsService.resetInviteLink(getAuthUser(req).id, req.params.id));
 };
 
 // Share with an email address: instant access for an existing account, otherwise an emailed

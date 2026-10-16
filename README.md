@@ -95,21 +95,25 @@ with them. Deleting a board also deletes its tasks (and its shares).
 
 ### Sharing (view-only, by email)
 
-| Method | Path                             | Description                                                                                                           |
-| ------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], inviteLink}`                                                      |
-| POST   | `/api/boards/:id/shares`         | Owner only. Body `{email}` → `201 {shares}`. `404 USER_NOT_FOUND`, `409 ALREADY_SHARED`, `400 CANNOT_SHARE_WITH_SELF` |
-| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`. `404 SHARE_NOT_FOUND`                                                                             |
-| POST   | `/api/boards/:id/invites`        | Owner only. Body `{email}` → `200 {message}`: emails that address the board's invite link                            |
+| Method | Path                             | Description                                                                                                                                                                                      |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], invites: [{email, createdAt}]}` (viewers + pending emailed invites)                                                                           |
+| POST   | `/api/boards/:id/invites`        | Owner only. Body `{email}` → `200 {status: 'shared' \| 'invited', shares, invites}`. `400 CANNOT_SHARE_WITH_SELF`, `409 ALREADY_SHARED`, `502 EMAIL_FAILED`                                   |
+| DELETE | `/api/boards/:id/invites/:email` | Owner only → `204`: withdraws a pending invite (its link stops working). `404 INVITE_NOT_FOUND`                                                                                                  |
+| POST   | `/api/boards/:id/shares`         | Owner only. Body `{email}` → `201 {shares}`: share directly with an existing account. `404 USER_NOT_FOUND`, `409 ALREADY_SHARED`, `400 CANNOT_SHARE_WITH_SELF`                                 |
+| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`. `404 SHARE_NOT_FOUND`                                                                                                                                                        |
 
-**Invite links (join by link, for people who may not have an account yet):**
+**How "invite by email" works** (like "Share with people" in Google Docs):
 
-| Method | Path                         | Description                                                                                 |
-| ------ | ---------------------------- | ------------------------------------------------------------------------------------------- |
-| GET    | `/api/invites/:token`        | **Public** → `200 {boardTitle, inviterName}`. `404 INVALID_INVITE`                          |
-| POST   | `/api/invites/:token/accept` | Requires login → `200 {boardId}`: joins the board as a viewer (idempotent; no-op for owner) |
+- the email **already has an account** → `status: 'shared'`: they are added as a viewer immediately and get a heads-up email linking to `CLIENT_ORIGIN/boards`;
+- **no account yet** → `status: 'invited'`: a pending invite **bound to that email** is stored on the board and an email with `CLIENT_ORIGIN/invite/<token>?email=<address>` is sent. Sending again replaces the earlier invite (only the latest link works).
 
-The invite link (`CLIENT_ORIGIN/invite/<token>`) is a **bearer token** on the board — anyone with it can join as a viewer, like a Trello share link. It's created the first time the owner opens Share. Access is granted only when a logged-in user accepts (we don't auto-grant by email, since sign-up doesn't verify email ownership).
+| Method | Path                         | Description                                                                                                                                                              |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/invites/:token`        | **Public** → `200 {boardTitle, inviterName, invitedEmail}`. `404 INVALID_INVITE`                                                                                         |
+| POST   | `/api/invites/:token/accept` | Requires login → `200 {boardId}`: joins as a viewer. Only the account whose email matches `invitedEmail` may accept (`403 INVITE_EMAIL_MISMATCH`); the link then stops working (single-use) |
+
+There is deliberately **no "anyone with the link" sharing**: every invite is tied to the address it was sent to and checked against the logged-in user's email on accept, so a forwarded link or a sign-up with a different email cannot gain access.
 
 **Access rules** (one place: `getVisibleBoard` / `getOwnBoard` in `boards.service.ts`):
 

@@ -12,7 +12,7 @@ const shareSchema = new Schema(
 
 // A pending invite for ONE email address (someone without an account yet, or who hasn't joined
 // yet). The emailed link carries this token, and only a user logged in with this exact email can
-// accept it — unlike the board-wide invite link below, which anyone holding it can use.
+// accept it; the entry is removed once used, so the link works exactly once.
 const inviteSchema = new Schema(
   {
     email: { type: String, required: true, lowercase: true, trim: true },
@@ -28,10 +28,6 @@ const boardSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 100 },
     sharedWith: { type: [shareSchema], default: [] },
     invites: { type: [inviteSchema], default: [] },
-    // A random token behind the board's invite link. Anyone with the link can join as a viewer,
-    // so it's a bearer token (like a Trello share link). Created lazily the first time a link is
-    // requested. Sparse index: only boards that have a token are indexed, and we look boards up by it.
-    inviteToken: { type: String, index: true, sparse: true },
   },
   { timestamps: true },
 );

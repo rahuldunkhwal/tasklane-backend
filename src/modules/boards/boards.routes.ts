@@ -23,5 +23,3 @@ boardsRouter.delete('/:id/shares/:userId', boardsController.unshare);
 // to that address. DELETE withdraws a pending invite.
 boardsRouter.post('/:id/invites', validateBody(shareBoardSchema), boardsController.sendInvite);
 boardsRouter.delete('/:id/invites/:email', boardsController.removeInvite);
-// Regenerate the invite link, disabling the old one
-boardsRouter.post('/:id/invite-link/reset', boardsController.resetInviteLink);
