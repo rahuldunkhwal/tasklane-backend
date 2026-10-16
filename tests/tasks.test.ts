@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { TaskModel } from '../src/modules/tasks/task.model.js';
 import {
   client,
   createBoard,
@@ -88,6 +89,16 @@ describe('GET /api/tasks', () => {
       'on second board',
     ]);
     for (const task of res.body.tasks) expect(Object.keys(task).sort()).toEqual(TASK_KEYS);
+  });
+
+  it('keeps a stable order for tasks that ended up with the same order number', async () => {
+    // Two "Add task" requests at the same instant can both compute the same order
+    await TaskModel.create({ board: board.id, title: 'first', order: 1000 });
+    await TaskModel.create({ board: board.id, title: 'second', order: 1000 });
+
+    for (let i = 0; i < 5; i += 1) {
+      expect(await listTitles(owner.client)).toEqual(['first', 'second']);
+    }
   });
 
   it('includes tasks on boards shared with me, alongside my own', async () => {

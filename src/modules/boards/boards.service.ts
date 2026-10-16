@@ -17,17 +17,22 @@ const visibleTo = (userId: string) => ({
   $or: [{ owner: userId }, { 'sharedWith.user': userId }],
 });
 
+// Shown as the owner's name when their account no longer exists (e.g. removed in the database
+// while the board was still shared). populate() then gives null, which must not crash the list.
+const UNKNOWN_OWNER = 'Unknown';
+type PopulatedOwner = { owner: { name: string } | null };
+
 // My own boards first (oldest first), then boards shared with me, each with my role on it
 export async function listBoards(userId: string) {
   const [own, shared] = await Promise.all([
     BoardModel.find({ owner: userId }).sort({ createdAt: 1 }),
     BoardModel.find({ 'sharedWith.user': userId })
       .sort({ createdAt: 1 })
-      .populate<{ owner: { name: string } }>('owner', 'name'), // for "Shared by Alice"
+      .populate<PopulatedOwner>('owner', 'name'), // for "Shared by Alice"
   ]);
   return [
     ...own.map((board) => toBoardDto(board, 'owner')),
-    ...shared.map((board) => toBoardDto(board, 'viewer', board.owner.name)),
+    ...shared.map((board) => toBoardDto(board, 'viewer', board.owner?.name ?? UNKNOWN_OWNER)),
   ];
 }
 
@@ -64,7 +69,7 @@ export async function getBoardDto(userId: string, boardId: string) {
   const { board, role } = await getVisibleBoard(userId, boardId);
   if (role === 'owner') return toBoardDto(board, 'owner');
   const owner = await UserModel.findById(board.owner).select('name');
-  return toBoardDto(board, 'viewer', owner?.name ?? '');
+  return toBoardDto(board, 'viewer', owner?.name ?? UNKNOWN_OWNER);
 }
 
 // Ids of the boards whose tasks the user may SEE (task list, search and filters)
@@ -127,10 +132,22 @@ export async function listShares(userId: string, boardId: string): Promise<Share
 // The bearer token behind a board's invite link, created the first time it's needed
 async function ensureInviteToken(board: BoardDocument): Promise<string> {
   if (board.inviteToken) return board.inviteToken;
+
+  // ONE atomic update: set a token only if the board still has none. When two requests race
+  // (Share opened in two tabs), the loser's filter no longer matches, so it reads back the
+  // winner's token instead of overwriting it, and both tabs hand out the same, live link.
   const token = crypto.randomBytes(24).toString('base64url');
-  board.inviteToken = token;
-  await board.save();
-  return token;
+  const updated = await BoardModel.findOneAndUpdate(
+    { _id: board._id, inviteToken: null }, // null also matches "field absent"
+    { $set: { inviteToken: token } },
+    { returnDocument: 'after' },
+  ).select('inviteToken');
+  const current = updated ?? (await BoardModel.findById(board._id).select('inviteToken'));
+  if (!current?.inviteToken) {
+    throw new AppError(404, 'BOARD_NOT_FOUND', 'Board not found'); // deleted in the meantime
+  }
+  board.inviteToken = current.inviteToken;
+  return current.inviteToken;
 }
 
 function inviteLinkFor(token: string): string {
@@ -162,22 +179,32 @@ export async function sendInvite(userId: string, boardId: string, email: string)
   const inviter = await UserModel.findById(userId).select('name');
   const link = `${inviteLinkFor(token)}?email=${encodeURIComponent(email)}`;
 
-  // Un-awaited, like the password-reset email: the request shouldn't wait on the mail provider.
-  sendEmail(boardInviteEmail(email, link, inviter?.name ?? 'Someone', board.title)).catch(
-    (error: unknown) => console.error('Failed to send board invite email:', error),
-  );
+  // Awaited on purpose (unlike the password-reset email): the owner must be told when the invite
+  // did NOT go out, so they can copy the link instead. Nothing to hide here: the reply says
+  // nothing about the recipient, only about our mail provider.
+  try {
+    await sendEmail(boardInviteEmail(email, link, inviter?.name ?? 'Someone', board.title));
+  } catch (error) {
+    console.error('Failed to send board invite email:', error);
+    throw new AppError(
+      502,
+      'EMAIL_FAILED',
+      "Couldn't send the invite email. Copy the invite link and share it instead.",
+    );
+  }
   return { message: 'Invitation sent' };
 }
 
 // PUBLIC (no login): what the invite landing page shows before anyone signs in
 export async function getInviteInfo(token: string) {
-  const board = await BoardModel.findOne({ inviteToken: token }).populate<{
-    owner: { name: string };
-  }>('owner', 'name');
+  const board = await BoardModel.findOne({ inviteToken: token }).populate<PopulatedOwner>(
+    'owner',
+    'name',
+  );
   if (!board) {
     throw new AppError(404, 'INVALID_INVITE', 'This invite link is invalid or no longer works');
   }
-  return { boardTitle: board.title, inviterName: board.owner.name };
+  return { boardTitle: board.title, inviterName: board.owner?.name ?? UNKNOWN_OWNER };
 }
 
 // Logged-in user joins the board the link points to (as a viewer). Idempotent.

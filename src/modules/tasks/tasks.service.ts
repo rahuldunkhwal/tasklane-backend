@@ -56,7 +56,9 @@ export async function listTasks(userId: string, filters: TaskFilters = {}) {
     };
   }
 
-  return TaskModel.find(query).sort({ board: 1, order: 1 });
+  // _id as the tie-breaker: two tasks can end up with the same order (two "Add task" clicks at
+  // the same instant); without it MongoDB may return ties in a different order on each call.
+  return TaskModel.find(query).sort({ board: 1, order: 1, _id: 1 });
 }
 
 export type TaskStats = { total: number; completed: number; overdue: number };
@@ -167,7 +169,7 @@ export async function moveTask(userId: string, taskId: string, input: MoveTaskIn
 
   // The OTHER tasks in the target board, in order (the moving task is left out)
   const siblings = await TaskModel.find({ board: targetBoard._id, _id: { $ne: task._id } })
-    .sort({ order: 1 })
+    .sort({ order: 1, _id: 1 }) // same tie-breaker as the list, so "index" means the same thing
     .select('order');
 
   const index = Math.min(input.index, siblings.length); // past the end = last place

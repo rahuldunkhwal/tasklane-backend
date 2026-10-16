@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { UserModel } from '../src/modules/users/user.model.js';
+import { sendEmail } from '../src/utils/email.js';
 import {
   client,
   createBoard,
@@ -106,6 +108,21 @@ describe('GET /api/boards', () => {
     const stranger = await signUp();
 
     expect(await listBoards(stranger.client)).toEqual([]);
+  });
+
+  it("still lists a shared board when the owner's account no longer exists", async () => {
+    const viewer = await makeViewer();
+    const token = await inviteToken(owner.client, board.id);
+    await UserModel.deleteOne({ _id: owner.id }); // e.g. removed directly in the database
+
+    const boards = await listBoards(viewer.client);
+
+    expect(boards).toHaveLength(1);
+    expect(boards[0]).toMatchObject({ id: board.id, role: 'viewer', ownerName: 'Unknown' });
+    expect((await viewer.client.get(`/api/boards/${board.id}`)).body.board.ownerName).toBe('Unknown');
+    const info = await client().get(`/api/invites/${token}`);
+    expect(info.status).toBe(200);
+    expect(info.body).toEqual({ boardTitle: 'Launch plan', inviterName: 'Unknown' });
   });
 });
 
@@ -344,6 +361,18 @@ describe('GET /api/boards/:id/shares', () => {
     expect(second.body.inviteLink).toBe(first.body.inviteLink);
   });
 
+  it('hands out one and the same link when the dialog is opened in several tabs at once', async () => {
+    // Several requests race to create the token on a board that has none yet
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => owner.client.get(`/api/boards/${board.id}/shares`)),
+    );
+
+    const links = results.map((res) => res.body.inviteLink as string);
+    expect(new Set(links).size).toBe(1);
+    const token = links[0]?.match(INVITE_LINK)?.[1];
+    expect((await client().get(`/api/invites/${token}`)).status).toBe(200);
+  });
+
   it('lists shared users in the order they were added, never the owner', async () => {
     const bob = await signUp({ name: 'Bob', email: 'bob@example.com' });
     const amy = await signUp({ name: 'Amy', email: 'amy@example.com' });
@@ -540,6 +569,15 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
     // and the link really works for a logged-out visitor
     const info = await client().get(`/api/invites/${token}`);
     expect(info.body).toEqual({ boardTitle: 'Launch plan', inviterName: 'Olivia Owner' });
+  });
+
+  it('answers 502 EMAIL_FAILED when the email cannot be sent, so the UI never claims success', async () => {
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('SendGrid failed to send email: sender not verified'));
+
+    const res = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'friend@example.com' });
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatchObject({ code: 'EMAIL_FAILED' });
   });
 
   it('escapes the board title and inviter name in the HTML email', async () => {
