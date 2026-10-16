@@ -549,13 +549,16 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
     expect((await client().post(`/api/boards/${board.id}/invites`).send({ email: 'a@b.co' })).status).toBe(401);
   });
 
-  it('emails the invite link for this board, with the email pre-filled', async () => {
+  it('emails an invite bound to that address when it has no account yet', async () => {
     const res = await owner.client
       .post(`/api/boards/${board.id}/invites`)
       .send({ email: '  New.Person+tag@Example.com ' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ message: 'Invitation sent' });
+    expect(res.body.status).toBe('invited');
+    expect(res.body.shares).toEqual([]);
+    expect(res.body.invites).toEqual([{ email: 'new.person+tag@example.com', createdAt: expect.any(String) }]);
+    expect(res.body.inviteLink).toMatch(INVITE_LINK);
 
     const email = lastEmail();
     expect(email.to).toBe('new.person+tag@example.com');
@@ -564,11 +567,74 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
     expect(token).toMatch(TOKEN);
     expect(email.text).toContain(`${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`);
     expect(email.html).toContain(`${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`);
-    // the emailed token is the board's one and only invite token
-    expect(token).toBe(await inviteToken(owner.client, board.id));
-    // and the link really works for a logged-out visitor
+    // it is NOT the board-wide link: this token belongs to that one email
+    expect(token).not.toBe(await inviteToken(owner.client, board.id));
+    // the landing page learns who it was sent to (to pre-fill the form / warn the wrong account)
     const info = await client().get(`/api/invites/${token}`);
-    expect(info.body).toEqual({ boardTitle: 'Launch plan', inviterName: 'Olivia Owner' });
+    expect(info.status).toBe(200);
+    expect(info.body).toEqual({
+      boardTitle: 'Launch plan',
+      inviterName: 'Olivia Owner',
+      invitedEmail: 'new.person+tag@example.com',
+    });
+    // and the Share dialog lists it as pending
+    const sharing = await owner.client.get(`/api/boards/${board.id}/shares`);
+    expect(sharing.body.invites.map((i: { email: string }) => i.email)).toEqual(['new.person+tag@example.com']);
+  });
+
+  it('gives an existing account access right away and emails them a heads-up', async () => {
+    const friend = await signUp({ name: 'Fay', email: 'fay@example.com' });
+
+    const res = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'FAY@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('shared');
+    expect(res.body.shares).toEqual([{ userId: friend.id, name: 'Fay', email: 'fay@example.com' }]);
+    expect(res.body.invites).toEqual([]);
+    expect((await friend.client.get(`/api/boards/${board.id}`)).body.board.role).toBe('viewer');
+    const email = lastEmail();
+    expect(email.to).toBe('fay@example.com');
+    expect(email.subject).toBe('Olivia Owner shared "Launch plan" with you on Tasklane');
+    expect(email.text).toContain(`${CLIENT_ORIGIN}/boards`);
+    expect(email.text).not.toContain('/invite/'); // no token: they already have access
+  });
+
+  it('refuses your own address and people who already have access', async () => {
+    const self = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: owner.email });
+    expect(self.status).toBe(400);
+    expect(errorCode(self)).toBe('CANNOT_SHARE_WITH_SELF');
+
+    const viewer = await makeViewer();
+    const again = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: viewer.email });
+    expect(again.status).toBe(409);
+    expect(errorCode(again)).toBe('ALREADY_SHARED');
+    expect(sentEmails()).toEqual([]);
+  });
+
+  it('sending again replaces the earlier invite, so only the latest link works', async () => {
+    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'late@example.com' });
+    const first = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'late@example.com' });
+    const second = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+
+    expect(second).not.toBe(first);
+    expect((await client().get(`/api/invites/${first}`)).status).toBe(404);
+    expect((await client().get(`/api/invites/${second}`)).status).toBe(200);
+    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toHaveLength(1);
+  });
+
+  it('lets the owner withdraw a pending invite, which kills its link', async () => {
+    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'Pending@Example.com' });
+    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+
+    const res = await owner.client.delete(`/api/boards/${board.id}/invites/${encodeURIComponent('PENDING@example.com')}`);
+
+    expect(res.status).toBe(204);
+    expect((await client().get(`/api/invites/${token}`)).status).toBe(404);
+    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toEqual([]);
+    const again = await owner.client.delete(`/api/boards/${board.id}/invites/pending%40example.com`);
+    expect(again.status).toBe(404);
+    expect(errorCode(again)).toBe('INVITE_NOT_FOUND');
   });
 
   it('answers 502 EMAIL_FAILED when the email cannot be sent, so the UI never claims success', async () => {
@@ -578,6 +644,8 @@ describe('POST /api/boards/:id/invites (email the invite link)', () => {
 
     expect(res.status).toBe(502);
     expect(res.body.error).toMatchObject({ code: 'EMAIL_FAILED' });
+    // nothing was delivered, so nothing is left pending
+    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toEqual([]);
   });
 
   it('escapes the board title and inviter name in the HTML email', async () => {
@@ -736,6 +804,42 @@ describe('POST /api/invites/:token/accept', () => {
     expect(res.body).toEqual({ boardId: board.id });
     expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.shares).toEqual([]);
     expect((await owner.client.get(`/api/boards/${board.id}`)).body.board.role).toBe('owner');
+  });
+
+  it('accepts an emailed invite from the invited account, once only', async () => {
+    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'invitee@example.com' });
+    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    const invitee = await signUp({ name: 'Ivy', email: 'invitee@example.com' });
+
+    const res = await invitee.client.post(`/api/invites/${token}/accept`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ boardId: board.id });
+    expect((await invitee.client.get(`/api/boards/${board.id}`)).body.board.role).toBe('viewer');
+    const sharing = await owner.client.get(`/api/boards/${board.id}/shares`);
+    expect(sharing.body.shares.map((s: { email: string }) => s.email)).toEqual(['invitee@example.com']);
+    expect(sharing.body.invites).toEqual([]); // no longer pending
+    // used up: the same link opened again (another browser, another account) is dead
+    const another = await signUp();
+    const reuse = await another.client.post(`/api/invites/${token}/accept`);
+    expect(reuse.status).toBe(404);
+    expect(errorCode(reuse)).toBe('INVALID_INVITE');
+  });
+
+  it('refuses an emailed invite from a different account, without granting access', async () => {
+    await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'right@example.com' });
+    const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
+    const wrong = await signUp({ email: 'wrong@example.com' }); // e.g. changed the email on the sign-up form
+
+    const res = await wrong.client.post(`/api/invites/${token}/accept`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toEqual({
+      code: 'INVITE_EMAIL_MISMATCH',
+      message: 'This invite was sent to r•••t@example.com. Log in with that account to join.',
+    });
+    expect((await wrong.client.get(`/api/boards/${board.id}`)).status).toBe(404);
+    expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toHaveLength(1); // still pending
   });
 
   it('answers 404 for an unknown token', async () => {

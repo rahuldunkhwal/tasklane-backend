@@ -28,3 +28,6 @@ export function toBoardDto(board: BoardFields, role: BoardRole, ownerName?: stri
 
 // One person a board is shared with, as shown in the owner's "People with access" list
 export type ShareDto = { userId: string; name: string; email: string };
+
+// An emailed invite that hasn't been accepted yet (the token itself is never sent to the client)
+export type InviteDto = { email: string; createdAt: Date };

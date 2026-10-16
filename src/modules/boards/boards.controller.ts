@@ -45,7 +45,8 @@ export const resetInviteLink: RequestHandler<{ id: string }> = async (req, res) 
   res.json(await boardsService.resetInviteLink(getAuthUser(req).id, req.params.id));
 };
 
-// Email the invite link to an address (used when that email has no account yet)
+// Share with an email address: instant access for an existing account, otherwise an emailed
+// invite bound to that address. Answers with the updated sharing state + what happened.
 export const sendInvite: RequestHandler<{ id: string }> = async (req, res) => {
   const result = await boardsService.sendInvite(
     getAuthUser(req).id,
@@ -53,6 +54,16 @@ export const sendInvite: RequestHandler<{ id: string }> = async (req, res) => {
     (req.body as ShareBoardInput).email,
   );
   res.json(result);
+};
+
+// Withdraw a pending (not yet accepted) emailed invite
+export const removeInvite: RequestHandler<{ id: string; email: string }> = async (req, res) => {
+  await boardsService.removeInvite(
+    getAuthUser(req).id,
+    req.params.id,
+    req.params.email.trim().toLowerCase(), // stored normalised, so match the same way
+  );
+  res.status(204).end();
 };
 
 export const share: RequestHandler<{ id: string }> = async (req, res) => {

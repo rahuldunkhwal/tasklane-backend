@@ -10,11 +10,24 @@ const shareSchema = new Schema(
   { _id: false }, // entries are identified by their user, they don't need their own id
 );
 
+// A pending invite for ONE email address (someone without an account yet, or who hasn't joined
+// yet). The emailed link carries this token, and only a user logged in with this exact email can
+// accept it — unlike the board-wide invite link below, which anyone holding it can use.
+const inviteSchema = new Schema(
+  {
+    email: { type: String, required: true, lowercase: true, trim: true },
+    token: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }, // identified by email (one pending invite per email)
+);
+
 const boardSchema = new Schema(
   {
     owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, maxlength: 100 },
     sharedWith: { type: [shareSchema], default: [] },
+    invites: { type: [inviteSchema], default: [] },
     // A random token behind the board's invite link. Anyone with the link can join as a viewer,
     // so it's a bearer token (like a Trello share link). Created lazily the first time a link is
     // requested. Sparse index: only boards that have a token are indexed, and we look boards up by it.
@@ -22,6 +35,9 @@ const boardSchema = new Schema(
   },
   { timestamps: true },
 );
+
+// Accepting an emailed invite looks the board up by the token inside the invites list
+boardSchema.index({ 'invites.token': 1 }, { sparse: true });
 
 // "My boards, oldest first" is the most common query: this one index serves both the filter
 // (owner) and the sort (createdAt), so MongoDB never has to sort in memory.

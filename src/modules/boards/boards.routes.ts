@@ -19,7 +19,9 @@ boardsRouter.delete('/:id', boardsController.remove);
 boardsRouter.get('/:id/shares', boardsController.sharing);
 boardsRouter.post('/:id/shares', validateBody(shareBoardSchema), boardsController.share);
 boardsRouter.delete('/:id/shares/:userId', boardsController.unshare);
-// Email the invite link to someone (typically a person without an account yet)
+// Share with an email: instant access if it has an account, otherwise an emailed invite bound
+// to that address. DELETE withdraws a pending invite.
 boardsRouter.post('/:id/invites', validateBody(shareBoardSchema), boardsController.sendInvite);
+boardsRouter.delete('/:id/invites/:email', boardsController.removeInvite);
 // Regenerate the invite link, disabling the old one
 boardsRouter.post('/:id/invite-link/reset', boardsController.resetInviteLink);
