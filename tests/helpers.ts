@@ -16,7 +16,13 @@ export function client(): Client {
 
 export const PASSWORD = 'Password123'; // passes the rule: 8–72 chars, at least a letter and a number
 
-export type TestUser = { client: Client; id: string; name: string; email: string; password: string };
+export type TestUser = {
+  client: Client;
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+};
 
 let userCounter = 0;
 
@@ -64,14 +70,20 @@ export async function createTask(c: Client, boardId: string, fields: Record<stri
 // Makes `user` a viewer of the board the only way there is: the owner invites their email and
 // they accept the emailed invite (the mocked sender records the email, so we can read the link).
 export async function joinViaInvite(ownerClient: Client, boardId: string, user: TestUser) {
-  const invite = await ownerClient.post(`/api/boards/${boardId}/invites`).send({ email: user.email });
+  const invite = await ownerClient
+    .post(`/api/boards/${boardId}/invites`)
+    .send({ email: user.email });
   if (invite.status !== 200) {
-    throw new Error(`joinViaInvite: invite failed: ${invite.status} ${JSON.stringify(invite.body)}`);
+    throw new Error(
+      `joinViaInvite: invite failed: ${invite.status} ${JSON.stringify(invite.body)}`,
+    );
   }
   const token = tokenFromEmail(lastEmail(), INVITE_TOKEN);
   const accept = await user.client.post(`/api/invites/${token}/accept`);
   if (accept.status !== 200) {
-    throw new Error(`joinViaInvite: accept failed: ${accept.status} ${JSON.stringify(accept.body)}`);
+    throw new Error(
+      `joinViaInvite: accept failed: ${accept.status} ${JSON.stringify(accept.body)}`,
+    );
   }
 }
 

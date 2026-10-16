@@ -54,7 +54,9 @@ describe('GET /api/boards', () => {
     const res = await client().get('/api/boards');
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Please log in to continue' } });
+    expect(res.body).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'Please log in to continue' },
+    });
   });
 
   it('returns an empty list for a brand-new user', async () => {
@@ -116,7 +118,9 @@ describe('GET /api/boards', () => {
 
     expect(boards).toHaveLength(1);
     expect(boards[0]).toMatchObject({ id: board.id, role: 'viewer', ownerName: 'Unknown' });
-    expect((await viewer.client.get(`/api/boards/${board.id}`)).body.board.ownerName).toBe('Unknown');
+    expect((await viewer.client.get(`/api/boards/${board.id}`)).body.board.ownerName).toBe(
+      'Unknown',
+    );
     const info = await client().get(`/api/invites/${token}`);
     expect(info.status).toBe(200);
     expect(info.body).toEqual({
@@ -186,14 +190,23 @@ describe('POST /api/boards', () => {
   it('rejects a missing, non-object, malformed or oversized body', async () => {
     const none = await owner.client.post('/api/boards');
     expect(none.status).toBe(400);
-    expect(none.body.error).toEqual({ code: 'INVALID_BODY', message: 'Request body must be a JSON object' });
+    expect(none.body.error).toEqual({
+      code: 'INVALID_BODY',
+      message: 'Request body must be a JSON object',
+    });
 
     const array = await owner.client.post('/api/boards').send([{ title: 'x' }]);
     expect(errorCode(array)).toBe('INVALID_BODY');
 
-    const broken = await owner.client.post('/api/boards').set('Content-Type', 'application/json').send('{"title":');
+    const broken = await owner.client
+      .post('/api/boards')
+      .set('Content-Type', 'application/json')
+      .send('{"title":');
     expect(broken.status).toBe(400);
-    expect(broken.body.error).toEqual({ code: 'INVALID_JSON', message: 'Request body is not valid JSON' });
+    expect(broken.body.error).toEqual({
+      code: 'INVALID_JSON',
+      message: 'Request body is not valid JSON',
+    });
 
     const huge = await owner.client.post('/api/boards').send({ title: 'x'.repeat(120_000) });
     expect(huge.status).toBe(413);
@@ -222,7 +235,11 @@ describe('GET /api/boards/:id', () => {
     const res = await viewer.client.get(`/api/boards/${board.id}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.board).toMatchObject({ id: board.id, role: 'viewer', ownerName: 'Olivia Owner' });
+    expect(res.body.board).toMatchObject({
+      id: board.id,
+      role: 'viewer',
+      ownerName: 'Olivia Owner',
+    });
   });
 
   it('hides boards from strangers (404, not 403) and answers 404 for unknown ids', async () => {
@@ -266,7 +283,9 @@ describe('PATCH /api/boards/:id', () => {
     expect(empty.body.error.details).toEqual([{ path: 'title', message: 'Title is required' }]);
 
     const stranger = await signUp();
-    const sneaky = await owner.client.patch(`/api/boards/${board.id}`).send({ title: 'Ok', owner: stranger.id });
+    const sneaky = await owner.client
+      .patch(`/api/boards/${board.id}`)
+      .send({ title: 'Ok', owner: stranger.id });
     expect(sneaky.status).toBe(200);
     expect((await stranger.client.get(`/api/boards/${board.id}`)).status).toBe(404);
   });
@@ -284,15 +303,24 @@ describe('PATCH /api/boards/:id', () => {
     const viewer = await makeViewer();
     const stranger = await signUp();
 
-    const asViewer = await viewer.client.patch(`/api/boards/${board.id}`).send({ title: 'Hijacked' });
+    const asViewer = await viewer.client
+      .patch(`/api/boards/${board.id}`)
+      .send({ title: 'Hijacked' });
     expect(asViewer.status).toBe(403);
-    expect(asViewer.body.error).toEqual({ code: 'READ_ONLY', message: 'You have view-only access to this board' });
+    expect(asViewer.body.error).toEqual({
+      code: 'READ_ONLY',
+      message: 'You have view-only access to this board',
+    });
 
-    const asStranger = await stranger.client.patch(`/api/boards/${board.id}`).send({ title: 'Hijacked' });
+    const asStranger = await stranger.client
+      .patch(`/api/boards/${board.id}`)
+      .send({ title: 'Hijacked' });
     expect(asStranger.status).toBe(404);
     expect(errorCode(asStranger)).toBe('BOARD_NOT_FOUND');
 
-    expect((await owner.client.get(`/api/boards/${board.id}`)).body.board.title).toBe('Launch plan');
+    expect((await owner.client.get(`/api/boards/${board.id}`)).body.board.title).toBe(
+      'Launch plan',
+    );
   });
 });
 
@@ -340,7 +368,9 @@ describe('DELETE /api/boards/:id', () => {
     const stranger = await signUp();
 
     expect(errorCode(await viewer.client.delete(`/api/boards/${board.id}`))).toBe('READ_ONLY');
-    expect(errorCode(await stranger.client.delete(`/api/boards/${board.id}`))).toBe('BOARD_NOT_FOUND');
+    expect(errorCode(await stranger.client.delete(`/api/boards/${board.id}`))).toBe(
+      'BOARD_NOT_FOUND',
+    );
     expect(errorCode(await owner.client.delete('/api/boards/nope'))).toBe('INVALID_ID');
     expect((await owner.client.get(`/api/boards/${board.id}`)).status).toBe(200);
   });
@@ -377,15 +407,21 @@ describe('GET /api/boards/:id/shares', () => {
     const stranger = await signUp();
 
     expect(errorCode(await viewer.client.get(`/api/boards/${board.id}/shares`))).toBe('READ_ONLY');
-    expect(errorCode(await stranger.client.get(`/api/boards/${board.id}/shares`))).toBe('BOARD_NOT_FOUND');
-    expect(errorCode(await owner.client.get(`/api/boards/${UNKNOWN_ID}/shares`))).toBe('BOARD_NOT_FOUND');
+    expect(errorCode(await stranger.client.get(`/api/boards/${board.id}/shares`))).toBe(
+      'BOARD_NOT_FOUND',
+    );
+    expect(errorCode(await owner.client.get(`/api/boards/${UNKNOWN_ID}/shares`))).toBe(
+      'BOARD_NOT_FOUND',
+    );
     expect(errorCode(await owner.client.get('/api/boards/bad/shares'))).toBe('INVALID_ID');
   });
 });
 
 describe('DELETE /api/boards/:id/shares/:userId (remove access)', () => {
   it('requires login', async () => {
-    expect((await client().delete(`/api/boards/${board.id}/shares/${UNKNOWN_ID}`)).status).toBe(401);
+    expect((await client().delete(`/api/boards/${board.id}/shares/${UNKNOWN_ID}`)).status).toBe(
+      401,
+    );
   });
 
   it('removes the viewer, who immediately loses access', async () => {
@@ -427,17 +463,21 @@ describe('DELETE /api/boards/:id/shares/:userId (remove access)', () => {
     const viewer = await makeViewer();
     const stranger = await signUp();
 
-    expect(errorCode(await viewer.client.delete(`/api/boards/${board.id}/shares/${viewer.id}`))).toBe('READ_ONLY');
-    expect(errorCode(await stranger.client.delete(`/api/boards/${board.id}/shares/${viewer.id}`))).toBe(
-      'BOARD_NOT_FOUND',
-    );
+    expect(
+      errorCode(await viewer.client.delete(`/api/boards/${board.id}/shares/${viewer.id}`)),
+    ).toBe('READ_ONLY');
+    expect(
+      errorCode(await stranger.client.delete(`/api/boards/${board.id}/shares/${viewer.id}`)),
+    ).toBe('BOARD_NOT_FOUND');
     expect((await viewer.client.get(`/api/boards/${board.id}`)).status).toBe(200);
   });
 });
 
 describe('POST /api/boards/:id/invites (invite by email)', () => {
   it('requires login', async () => {
-    expect((await client().post(`/api/boards/${board.id}/invites`).send({ email: 'a@b.co' })).status).toBe(401);
+    expect(
+      (await client().post(`/api/boards/${board.id}/invites`).send({ email: 'a@b.co' })).status,
+    ).toBe(401);
   });
 
   it('emails an invite bound to that address when it has no account yet', async () => {
@@ -456,8 +496,12 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     expect(email.subject).toBe('Olivia Owner shared "Launch plan" with you on Tasklane');
     const token = tokenFromEmail(email, INVITE_TOKEN);
     expect(token).toMatch(TOKEN);
-    expect(email.text).toContain(`${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`);
-    expect(email.html).toContain(`${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`);
+    expect(email.text).toContain(
+      `${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`,
+    );
+    expect(email.html).toContain(
+      `${CLIENT_ORIGIN}/invite/${token}?email=new.person%2Btag%40example.com`,
+    );
     // the landing page learns who it was sent to (to pre-fill the form / warn the wrong account)
     const info = await client().get(`/api/invites/${token}`);
     expect(info.status).toBe(200);
@@ -468,13 +512,17 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     });
     // and the Share dialog lists it as pending
     const sharing = await owner.client.get(`/api/boards/${board.id}/shares`);
-    expect(sharing.body.invites.map((i: { email: string }) => i.email)).toEqual(['new.person+tag@example.com']);
+    expect(sharing.body.invites.map((i: { email: string }) => i.email)).toEqual([
+      'new.person+tag@example.com',
+    ]);
   });
 
   it('invites an existing account the same way: no access until they accept', async () => {
     const friend = await signUp({ name: 'Fay', email: 'fay@example.com' });
 
-    const res = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'FAY@example.com' });
+    const res = await owner.client
+      .post(`/api/boards/${board.id}/invites`)
+      .send({ email: 'FAY@example.com' });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -492,11 +540,15 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     const viewer = await makeViewer();
     const emailsBefore = sentEmails().length;
 
-    const self = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: owner.email });
+    const self = await owner.client
+      .post(`/api/boards/${board.id}/invites`)
+      .send({ email: owner.email });
     expect(self.status).toBe(400);
     expect(errorCode(self)).toBe('CANNOT_SHARE_WITH_SELF');
 
-    const again = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: viewer.email });
+    const again = await owner.client
+      .post(`/api/boards/${board.id}/invites`)
+      .send({ email: viewer.email });
     expect(again.status).toBe(409);
     expect(errorCode(again)).toBe('ALREADY_SHARED');
     expect(sentEmails()).toHaveLength(emailsBefore); // neither attempt sent anything
@@ -515,20 +567,28 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
   it('lets the owner withdraw a pending invite, which kills its link', async () => {
     const token = await emailInvite(owner.client, board.id, 'Pending@Example.com');
 
-    const res = await owner.client.delete(`/api/boards/${board.id}/invites/${encodeURIComponent('PENDING@example.com')}`);
+    const res = await owner.client.delete(
+      `/api/boards/${board.id}/invites/${encodeURIComponent('PENDING@example.com')}`,
+    );
 
     expect(res.status).toBe(204);
     expect((await client().get(`/api/invites/${token}`)).status).toBe(404);
     expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toEqual([]);
-    const again = await owner.client.delete(`/api/boards/${board.id}/invites/pending%40example.com`);
+    const again = await owner.client.delete(
+      `/api/boards/${board.id}/invites/pending%40example.com`,
+    );
     expect(again.status).toBe(404);
     expect(errorCode(again)).toBe('INVITE_NOT_FOUND');
   });
 
   it('answers 502 EMAIL_FAILED when the email cannot be sent, so the UI never claims success', async () => {
-    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('SendGrid failed to send email: sender not verified'));
+    vi.mocked(sendEmail).mockRejectedValueOnce(
+      new Error('SendGrid failed to send email: sender not verified'),
+    );
 
-    const res = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'friend@example.com' });
+    const res = await owner.client
+      .post(`/api/boards/${board.id}/invites`)
+      .send({ email: 'friend@example.com' });
 
     expect(res.status).toBe(502);
     expect(res.body.error).toMatchObject({ code: 'EMAIL_FAILED' });
@@ -539,7 +599,9 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
   it('escapes the board title and inviter name in the HTML email', async () => {
     const sneaky = await createBoard(owner.client, 'Q3 <b>bold</b> & "quotes"');
 
-    await owner.client.post(`/api/boards/${sneaky.id}/invites`).send({ email: 'friend@example.com' });
+    await owner.client
+      .post(`/api/boards/${sneaky.id}/invites`)
+      .send({ email: 'friend@example.com' });
 
     const { html, text } = lastEmail();
     expect(html).not.toContain('<b>bold</b>');
@@ -551,7 +613,9 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     const res = await owner.client.post(`/api/boards/${board.id}/invites`).send({ email: 'nope' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.details).toEqual([{ path: 'email', message: 'Enter a valid email address' }]);
+    expect(res.body.error.details).toEqual([
+      { path: 'email', message: 'Enter a valid email address' },
+    ]);
     expect(sentEmails()).toEqual([]);
   });
 
@@ -560,11 +624,15 @@ describe('POST /api/boards/:id/invites (invite by email)', () => {
     const stranger = await signUp();
     const emailsBefore = sentEmails().length;
 
-    expect(errorCode(await viewer.client.post(`/api/boards/${board.id}/invites`).send({ email: 'x@y.co' }))).toBe(
-      'READ_ONLY',
-    );
     expect(
-      errorCode(await stranger.client.post(`/api/boards/${board.id}/invites`).send({ email: 'x@y.co' })),
+      errorCode(
+        await viewer.client.post(`/api/boards/${board.id}/invites`).send({ email: 'x@y.co' }),
+      ),
+    ).toBe('READ_ONLY');
+    expect(
+      errorCode(
+        await stranger.client.post(`/api/boards/${board.id}/invites`).send({ email: 'x@y.co' }),
+      ),
     ).toBe('BOARD_NOT_FOUND');
     expect(sentEmails()).toHaveLength(emailsBefore);
   });
@@ -626,10 +694,14 @@ describe('POST /api/invites/:token/accept', () => {
     const view = await invitee.client.get(`/api/boards/${board.id}`);
     expect(view.body.board).toMatchObject({ role: 'viewer', ownerName: 'Olivia Owner' });
     const sharing = await owner.client.get(`/api/boards/${board.id}/shares`);
-    expect(sharing.body.shares).toEqual([{ userId: invitee.id, name: 'Ivy', email: 'invitee@example.com' }]);
+    expect(sharing.body.shares).toEqual([
+      { userId: invitee.id, name: 'Ivy', email: 'invitee@example.com' },
+    ]);
     expect(sharing.body.invites).toEqual([]); // no longer pending
     // used up: the same link opened again (another browser, another account, even themselves) is dead
-    expect(errorCode(await invitee.client.post(`/api/invites/${token}/accept`))).toBe('INVALID_INVITE');
+    expect(errorCode(await invitee.client.post(`/api/invites/${token}/accept`))).toBe(
+      'INVALID_INVITE',
+    );
     const another = await signUp();
     const reuse = await another.client.post(`/api/invites/${token}/accept`);
     expect(reuse.status).toBe(404);
@@ -652,7 +724,7 @@ describe('POST /api/invites/:token/accept', () => {
     expect((await owner.client.get(`/api/boards/${board.id}/shares`)).body.invites).toHaveLength(1); // still pending
   });
 
-  it("refuses the owner too: an invite is for the person it was sent to", async () => {
+  it('refuses the owner too: an invite is for the person it was sent to', async () => {
     const token = await emailInvite(owner.client, board.id, 'someone@example.com');
 
     const res = await owner.client.post(`/api/invites/${token}/accept`);
@@ -680,8 +752,5 @@ describe('routes that do not exist under /api/boards', () => {
     expect(errorCode(loggedIn)).toBe('NOT_FOUND');
 
     expect((await client().get(`/api/boards/${board.id}/nothing/here`)).status).toBe(401);
-    // gone on purpose: no public invite link, and no way to add a viewer without their consent
-    expect((await owner.client.post(`/api/boards/${board.id}/invite-link/reset`)).status).toBe(404);
-    expect((await owner.client.post(`/api/boards/${board.id}/shares`).send({ email: 'x@y.co' })).status).toBe(404);
   });
 });

@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 import { getAuthUser } from '../../middleware/requireAuth.js';
-import type { CreateBoardInput, ShareBoardInput, UpdateBoardInput } from './boards.schema.js';
+import type { CreateBoardInput, InviteInput, UpdateBoardInput } from './boards.schema.js';
 import * as boardsService from './boards.service.js';
 
 // Controllers only deal with HTTP. The current user always comes from the session (getAuthUser),
@@ -40,13 +40,13 @@ export const sharing: RequestHandler<{ id: string }> = async (req, res) => {
   res.json(await boardsService.getSharing(getAuthUser(req).id, req.params.id));
 };
 
-// Share with an email address: instant access for an existing account, otherwise an emailed
-// invite bound to that address. Answers with the updated sharing state + what happened.
+// Invite an email address: a pending invite bound to it (access only once they accept).
+// Answers with the updated sharing state.
 export const sendInvite: RequestHandler<{ id: string }> = async (req, res) => {
   const result = await boardsService.sendInvite(
     getAuthUser(req).id,
     req.params.id,
-    (req.body as ShareBoardInput).email,
+    (req.body as InviteInput).email,
   );
   res.json(result);
 };

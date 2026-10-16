@@ -17,7 +17,9 @@ const CLIENT_ORIGIN = 'http://localhost:5173'; // set in tests/setup.ts
 const USER_KEYS = ['avatarUrl', 'createdAt', 'email', 'id', 'name'];
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 const FORGOT_MESSAGE = 'If an account exists for this email, we sent a link to reset the password.';
-const INVALID_CREDENTIALS = { error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } };
+const INVALID_CREDENTIALS = {
+  error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' },
+};
 const UNAUTHORIZED = { error: { code: 'UNAUTHORIZED', message: 'Please log in to continue' } };
 
 // The auth cookie a response sets (or clears), if any
@@ -60,7 +62,11 @@ describe('POST /api/auth/signup', () => {
 
     expect(res.status).toBe(201);
     expect(Object.keys(res.body.user).sort()).toEqual(USER_KEYS);
-    expect(res.body.user).toMatchObject({ name: 'Alice', email: 'alice@example.com', avatarUrl: null });
+    expect(res.body.user).toMatchObject({
+      name: 'Alice',
+      email: 'alice@example.com',
+      avatarUrl: null,
+    });
     expect(res.body.user.id).toMatch(/^[a-f\d]{24}$/i);
     expectLoginCookie(res);
 
@@ -126,9 +132,18 @@ describe('POST /api/auth/signup', () => {
         { path: 'password', message: 'Password must contain at least one number' },
       ],
     ],
-    [{ password: 'abcdefgh' }, [{ path: 'password', message: 'Password must contain at least one number' }]],
-    [{ password: '12345678' }, [{ path: 'password', message: 'Password must contain at least one letter' }]],
-    [{ password: `a1${'x'.repeat(71)}` }, [{ path: 'password', message: 'Password must be at most 72 characters' }]],
+    [
+      { password: 'abcdefgh' },
+      [{ path: 'password', message: 'Password must contain at least one number' }],
+    ],
+    [
+      { password: '12345678' },
+      [{ path: 'password', message: 'Password must contain at least one letter' }],
+    ],
+    [
+      { password: `a1${'x'.repeat(71)}` },
+      [{ path: 'password', message: 'Password must be at most 72 characters' }],
+    ],
   ])('rejects %j', async (override, details) => {
     const res = await client()
       .post('/api/auth/signup')
@@ -152,9 +167,15 @@ describe('POST /api/auth/signup', () => {
   it('rejects a missing or malformed body', async () => {
     const none = await client().post('/api/auth/signup');
     expect(none.status).toBe(400);
-    expect(none.body.error).toEqual({ code: 'INVALID_BODY', message: 'Request body must be a JSON object' });
+    expect(none.body.error).toEqual({
+      code: 'INVALID_BODY',
+      message: 'Request body must be a JSON object',
+    });
 
-    const broken = await client().post('/api/auth/signup').set('Content-Type', 'application/json').send('{"name":');
+    const broken = await client()
+      .post('/api/auth/signup')
+      .set('Content-Type', 'application/json')
+      .send('{"name":');
     expect(broken.status).toBe(400);
     expect(errorCode(broken)).toBe('INVALID_JSON');
   });
@@ -252,7 +273,10 @@ describe('GET /api/auth/me', () => {
     const res = await user.client.post('/api/auth/me');
 
     expect(res.status).toBe(404);
-    expect(res.body.error).toEqual({ code: 'NOT_FOUND', message: 'Route not found: POST /api/auth/me' });
+    expect(res.body.error).toEqual({
+      code: 'NOT_FOUND',
+      message: 'Route not found: POST /api/auth/me',
+    });
   });
 });
 
@@ -281,7 +305,9 @@ describe('POST /api/auth/logout', () => {
 
   it('succeeds even without a valid session (missing, garbage or already logged out)', async () => {
     expect((await client().post('/api/auth/logout')).status).toBe(204);
-    expect((await client().post('/api/auth/logout').set('Cookie', 'token=garbage')).status).toBe(204);
+    expect((await client().post('/api/auth/logout').set('Cookie', 'token=garbage')).status).toBe(
+      204,
+    );
 
     const user = await signUp();
     await user.client.post('/api/auth/logout');
@@ -293,7 +319,9 @@ describe('POST /api/auth/forgot-password', () => {
   it('emails a reset link to a registered address', async () => {
     await signUp({ email: 'forgot@example.com' });
 
-    const res = await client().post('/api/auth/forgot-password').send({ email: '  FORGOT@example.com ' });
+    const res = await client()
+      .post('/api/auth/forgot-password')
+      .send({ email: '  FORGOT@example.com ' });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ message: FORGOT_MESSAGE });
@@ -307,7 +335,9 @@ describe('POST /api/auth/forgot-password', () => {
   });
 
   it('answers the identical message for an unknown address, and sends nothing', async () => {
-    const res = await client().post('/api/auth/forgot-password').send({ email: 'nobody@example.com' });
+    const res = await client()
+      .post('/api/auth/forgot-password')
+      .send({ email: 'nobody@example.com' });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ message: FORGOT_MESSAGE });
@@ -320,7 +350,9 @@ describe('POST /api/auth/forgot-password', () => {
     expect(missing.body.error.details).toEqual([{ path: 'email', message: 'Email is required' }]);
 
     const bad = await client().post('/api/auth/forgot-password').send({ email: 'nope' });
-    expect(bad.body.error.details).toEqual([{ path: 'email', message: 'Enter a valid email address' }]);
+    expect(bad.body.error.details).toEqual([
+      { path: 'email', message: 'Enter a valid email address' },
+    ]);
     expect(sentEmails()).toEqual([]);
   });
 });
@@ -341,7 +373,9 @@ describe('POST /api/auth/reset-password', () => {
     await login(phone, user.email, user.password);
     const token = await requestReset(user.email);
 
-    const res = await client().post('/api/auth/reset-password').send({ token, password: NEW_PASSWORD });
+    const res = await client()
+      .post('/api/auth/reset-password')
+      .send({ token, password: NEW_PASSWORD });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -361,7 +395,9 @@ describe('POST /api/auth/reset-password', () => {
     const token = await requestReset(user.email);
     await client().post('/api/auth/reset-password').send({ token, password: NEW_PASSWORD });
 
-    const again = await client().post('/api/auth/reset-password').send({ token, password: 'Another-pw3' });
+    const again = await client()
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'Another-pw3' });
 
     expect(again.status).toBe(400);
     expect(again.body.error).toEqual({
@@ -372,16 +408,23 @@ describe('POST /api/auth/reset-password', () => {
   });
 
   it('rejects unknown and expired tokens', async () => {
-    const unknown = await client().post('/api/auth/reset-password').send({ token: 'f'.repeat(64), password: NEW_PASSWORD });
+    const unknown = await client()
+      .post('/api/auth/reset-password')
+      .send({ token: 'f'.repeat(64), password: NEW_PASSWORD });
     expect(unknown.status).toBe(400);
     expect(errorCode(unknown)).toBe('INVALID_RESET_TOKEN');
 
     const user = await signUp({ email: 'expired@example.com' });
     const token = await requestReset(user.email);
     // Fast-forward: pretend the 15-minute window has passed
-    await UserModel.updateOne({ email: user.email }, { passwordResetExpires: new Date(Date.now() - 1000) });
+    await UserModel.updateOne(
+      { email: user.email },
+      { passwordResetExpires: new Date(Date.now() - 1000) },
+    );
 
-    const expired = await client().post('/api/auth/reset-password').send({ token, password: NEW_PASSWORD });
+    const expired = await client()
+      .post('/api/auth/reset-password')
+      .send({ token, password: NEW_PASSWORD });
     expect(expired.status).toBe(400);
     expect(errorCode(expired)).toBe('INVALID_RESET_TOKEN');
     expect((await login(client(), user.email, user.password)).status).toBe(200); // unchanged
@@ -392,10 +435,14 @@ describe('POST /api/auth/reset-password', () => {
     const first = await requestReset(user.email);
     const second = await requestReset(user.email);
 
-    const stale = await client().post('/api/auth/reset-password').send({ token: first, password: NEW_PASSWORD });
+    const stale = await client()
+      .post('/api/auth/reset-password')
+      .send({ token: first, password: NEW_PASSWORD });
     expect(errorCode(stale)).toBe('INVALID_RESET_TOKEN');
 
-    const fresh = await client().post('/api/auth/reset-password').send({ token: second, password: NEW_PASSWORD });
+    const fresh = await client()
+      .post('/api/auth/reset-password')
+      .send({ token: second, password: NEW_PASSWORD });
     expect(fresh.status).toBe(200);
   });
 
@@ -410,7 +457,9 @@ describe('POST /api/auth/reset-password', () => {
       { path: 'password', message: 'Password must contain at least one number' },
     ]);
 
-    const ok = await client().post('/api/auth/reset-password').send({ token, password: NEW_PASSWORD });
+    const ok = await client()
+      .post('/api/auth/reset-password')
+      .send({ token, password: NEW_PASSWORD });
     expect(ok.status).toBe(200);
   });
 
@@ -481,7 +530,9 @@ describe('POST /api/auth/change-password', () => {
       .post('/api/auth/change-password')
       .send({ currentPassword: user.password, newPassword: NEW_PASSWORD });
 
-    const res = await client().post('/api/auth/reset-password').send({ token, password: 'Another-pw3' });
+    const res = await client()
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'Another-pw3' });
 
     expect(res.status).toBe(400);
     expect(errorCode(res)).toBe('INVALID_RESET_TOKEN');
@@ -519,6 +570,8 @@ describe('routes that do not exist under /api/auth', () => {
     const res = await client().get('/api/auth/nope');
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'NOT_FOUND', message: 'Route not found: GET /api/auth/nope' } });
+    expect(res.body).toEqual({
+      error: { code: 'NOT_FOUND', message: 'Route not found: GET /api/auth/nope' },
+    });
   });
 });

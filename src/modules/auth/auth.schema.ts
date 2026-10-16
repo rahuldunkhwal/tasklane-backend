@@ -6,7 +6,7 @@ const nameRule = requiredString('Name')
   .min(1, 'Name is required')
   .max(50, 'Name must be at most 50 characters');
 
-// Exported: reset password and change password (later phases) must use the same rules
+// Exported: reset password and change password must use the same rules
 export const passwordRule = requiredString('Password')
   .min(1, { error: 'Password is required', abort: true })
   .min(8, 'Password must be at least 8 characters')

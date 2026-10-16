@@ -123,11 +123,6 @@ async function sharesForBoard(board: BoardDocument): Promise<ShareDto[]> {
   });
 }
 
-export async function listShares(userId: string, boardId: string): Promise<ShareDto[]> {
-  const board = await getOwnBoard(userId, boardId);
-  return sharesForBoard(board);
-}
-
 // Pending emailed invites, oldest first. The token stays server-side.
 function invitesForBoard(board: BoardDocument): InviteDto[] {
   return board.invites.map((invite) => ({ email: invite.email, createdAt: invite.createdAt }));
@@ -137,14 +132,18 @@ function invitesForBoard(board: BoardDocument): InviteDto[] {
 // someone else's from an error message
 function maskEmail(email: string): string {
   const [local = '', domain = ''] = email.split('@');
-  const visible = local.length > 2 ? `${local[0]}•••${local[local.length - 1]}` : `${local[0] ?? ''}•••`;
+  const visible =
+    local.length > 2 ? `${local[0]}•••${local[local.length - 1]}` : `${local[0] ?? ''}•••`;
   return `${visible}@${domain}`;
 }
 
 // Adds a user to a board's viewers in ONE atomic update (only if they're not in the list yet),
 // so two clicks at the same moment can't add them twice. Returns false if they already had access.
 // (matchedCount, not modifiedCount: timestamps make Mongoose also set updatedAt on every update.)
-async function addViewer(boardId: Types.ObjectId, userId: Types.ObjectId | string): Promise<boolean> {
+async function addViewer(
+  boardId: Types.ObjectId,
+  userId: Types.ObjectId | string,
+): Promise<boolean> {
   const result = await BoardModel.updateOne(
     { _id: boardId, 'sharedWith.user': { $ne: userId } },
     { $push: { sharedWith: { user: userId, role: 'viewer' } } },

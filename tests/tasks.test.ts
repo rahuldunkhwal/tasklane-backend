@@ -54,7 +54,10 @@ async function listTitles(c: Client, query = ''): Promise<string[]> {
 async function listOrders(c: Client): Promise<Array<{ title: string; order: number }>> {
   const res = await c.get('/api/tasks');
   expect(res.status).toBe(200);
-  return res.body.tasks.map((t: { title: string; order: number }) => ({ title: t.title, order: t.order }));
+  return res.body.tasks.map((t: { title: string; order: number }) => ({
+    title: t.title,
+    order: t.order,
+  }));
 }
 
 describe('GET /api/tasks', () => {
@@ -124,7 +127,10 @@ describe('GET /api/tasks', () => {
     beforeEach(async () => {
       await createTask(owner.client, board.id, { title: 'Buy milk' });
       await createTask(owner.client, board.id, { title: 'buy BREAD' });
-      await createTask(owner.client, board.id, { title: 'Walk dog', description: 'buy milk first' });
+      await createTask(owner.client, board.id, {
+        title: 'Walk dog',
+        description: 'buy milk first',
+      });
     });
 
     it('matches the title only, case-insensitively, anywhere in the title', async () => {
@@ -176,7 +182,9 @@ describe('GET /api/tasks', () => {
       expect(await listTitles(owner.client, '?completed=false')).toEqual(['open']);
       const res = await owner.client.get('/api/tasks?completed=1');
       expect(res.status).toBe(400);
-      expect(res.body.error.details).toEqual([{ path: 'completed', message: 'Must be true or false' }]);
+      expect(res.body.error.details).toEqual([
+        { path: 'completed', message: 'Must be true or false' },
+      ]);
     });
 
     it('noDueDate=true keeps only tasks without a due date (false is a no-op)', async () => {
@@ -209,27 +217,41 @@ describe('GET /api/tasks', () => {
     });
 
     it('rejects a range whose dueFrom is after dueTo', async () => {
-      const res = await owner.client.get(`/api/tasks?dueFrom=${daysFromNow(5)}&dueTo=${daysFromNow(1)}`);
+      const res = await owner.client.get(
+        `/api/tasks?dueFrom=${daysFromNow(5)}&dueTo=${daysFromNow(1)}`,
+      );
 
       expect(res.status).toBe(400);
-      expect(res.body.error.details).toEqual([{ path: 'dueFrom', message: 'dueFrom must be before dueTo' }]);
+      expect(res.body.error.details).toEqual([
+        { path: 'dueFrom', message: 'dueFrom must be before dueTo' },
+      ]);
     });
 
     it('rejects dates that are not full ISO date-times with an offset', async () => {
       for (const bad of ['2026-10-20', '2026-10-20T10:00:00', 'yesterday']) {
         const res = await owner.client.get(`/api/tasks?dueFrom=${bad}`);
         expect(res.status).toBe(400);
-        expect(res.body.error.details).toEqual([{ path: 'dueFrom', message: 'dueFrom must be a valid date' }]);
+        expect(res.body.error.details).toEqual([
+          { path: 'dueFrom', message: 'dueFrom must be a valid date' },
+        ]);
       }
     });
 
     it('combines filters with AND', async () => {
-      const match = await createTask(owner.client, board.id, { title: 'open high', priority: 'high' });
-      const done = await createTask(owner.client, board.id, { title: 'done high', priority: 'high' });
+      const match = await createTask(owner.client, board.id, {
+        title: 'open high',
+        priority: 'high',
+      });
+      const done = await createTask(owner.client, board.id, {
+        title: 'done high',
+        priority: 'high',
+      });
       await createTask(owner.client, board.id, { title: 'open low', priority: 'low' });
       await owner.client.patch(`/api/tasks/${done.id}`).send({ completed: true });
 
-      expect(await listTitles(owner.client, '?priority=high&completed=false')).toEqual([match.title]);
+      expect(await listTitles(owner.client, '?priority=high&completed=false')).toEqual([
+        match.title,
+      ]);
     });
 
     it('reports every invalid filter at once and ignores unknown parameters', async () => {
@@ -270,7 +292,10 @@ describe('GET /api/tasks/stats', () => {
 
   it('counts total, completed and overdue (open + due date in the past)', async () => {
     await createTask(owner.client, board.id, { title: 'overdue', dueDate: daysFromNow(-1) });
-    const done = await createTask(owner.client, board.id, { title: 'done late', dueDate: daysFromNow(-1) });
+    const done = await createTask(owner.client, board.id, {
+      title: 'done late',
+      dueDate: daysFromNow(-1),
+    });
     await owner.client.patch(`/api/tasks/${done.id}`).send({ completed: true });
     await createTask(owner.client, board.id, { title: 'no due date' });
     await createTask(owner.client, board.id, { title: 'due later', dueDate: daysFromNow(3) });
@@ -300,7 +325,9 @@ describe('POST /api/tasks', () => {
   });
 
   it('creates a task with defaults and puts it last on the board', async () => {
-    const res = await owner.client.post('/api/tasks').send({ boardId: board.id, title: '  Write tests  ' });
+    const res = await owner.client
+      .post('/api/tasks')
+      .send({ boardId: board.id, title: '  Write tests  ' });
 
     expect(res.status).toBe(201);
     expect(Object.keys(res.body.task).sort()).toEqual(TASK_KEYS);
@@ -353,7 +380,10 @@ describe('POST /api/tasks', () => {
     const res = await owner.client.post('/api/tasks').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatchObject({ code: 'VALIDATION_ERROR', message: 'Invalid request data' });
+    expect(res.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid request data',
+    });
     expect(res.body.error.details).toEqual([
       { path: 'boardId', message: 'Board is required' },
       { path: 'title', message: 'Title is required' },
@@ -364,7 +394,11 @@ describe('POST /api/tasks', () => {
     [{ boardId: 'not-an-id', title: 'x' }, 'boardId', 'Invalid board id'],
     [{ title: '   ' }, 'title', 'Title is required'],
     [{ title: 'x'.repeat(201) }, 'title', 'Title must be at most 200 characters'],
-    [{ title: 'x', description: 'd'.repeat(2001) }, 'description', 'Description must be at most 2000 characters'],
+    [
+      { title: 'x', description: 'd'.repeat(2001) },
+      'description',
+      'Description must be at most 2000 characters',
+    ],
     [{ title: 'x', priority: 'urgent' }, 'priority', 'Priority must be low, medium or high'],
     [{ title: 'x', priority: 'High' }, 'priority', 'Priority must be low, medium or high'],
     [{ title: 'x', dueDate: '2026-10-20' }, 'dueDate', 'Due date must be a valid date'],
@@ -377,7 +411,9 @@ describe('POST /api/tasks', () => {
   });
 
   it('accepts an explicit null due date', async () => {
-    const res = await owner.client.post('/api/tasks').send({ boardId: board.id, title: 'x', dueDate: null });
+    const res = await owner.client
+      .post('/api/tasks')
+      .send({ boardId: board.id, title: 'x', dueDate: null });
 
     expect(res.status).toBe(201);
     expect(res.body.task.dueDate).toBeNull();
@@ -392,12 +428,15 @@ describe('POST /api/tasks', () => {
     expect(array.status).toBe(400);
     expect(errorCode(array)).toBe('INVALID_BODY');
 
-    const broken = await owner.client.post('/api/tasks').set('Content-Type', 'application/json').send('{"title":');
+    const broken = await owner.client
+      .post('/api/tasks')
+      .set('Content-Type', 'application/json')
+      .send('{"title":');
     expect(broken.status).toBe(400);
     expect(errorCode(broken)).toBe('INVALID_JSON');
   });
 
-  it("answers 404 for a board that does not exist or belongs to someone else (no leak)", async () => {
+  it('answers 404 for a board that does not exist or belongs to someone else (no leak)', async () => {
     const stranger = await signUp();
     const theirs = await createBoard(stranger.client, 'Not yours');
 
@@ -457,11 +496,15 @@ describe('PATCH /api/tasks/:id', () => {
   it('toggles completed and sets or clears the due date', async () => {
     const dueDate = daysFromNow(1);
 
-    const set = await owner.client.patch(`/api/tasks/${task.id}`).send({ completed: true, dueDate });
+    const set = await owner.client
+      .patch(`/api/tasks/${task.id}`)
+      .send({ completed: true, dueDate });
     expect(set.status).toBe(200);
     expect(set.body.task).toMatchObject({ completed: true, dueDate });
 
-    const cleared = await owner.client.patch(`/api/tasks/${task.id}`).send({ completed: false, dueDate: null });
+    const cleared = await owner.client
+      .patch(`/api/tasks/${task.id}`)
+      .send({ completed: false, dueDate: null });
     expect(cleared.body.task).toMatchObject({ completed: false, dueDate: null });
   });
 
@@ -521,7 +564,9 @@ describe('PATCH /api/tasks/:id', () => {
 
   it("answers 404 for another user's task and 403 for a viewer", async () => {
     const stranger = await signUp();
-    const asStranger = await stranger.client.patch(`/api/tasks/${task.id}`).send({ title: 'hijack' });
+    const asStranger = await stranger.client
+      .patch(`/api/tasks/${task.id}`)
+      .send({ title: 'hijack' });
     expect(asStranger.status).toBe(404);
     expect(errorCode(asStranger)).toBe('TASK_NOT_FOUND');
 
@@ -598,7 +643,9 @@ describe('PATCH /api/tasks/:id/move (drag and drop)', () => {
   });
 
   it('requires login', async () => {
-    const res = await client().patch(`/api/tasks/${a.id}/move`).send({ boardId: board.id, index: 0 });
+    const res = await client()
+      .patch(`/api/tasks/${a.id}/move`)
+      .send({ boardId: board.id, index: 0 });
 
     expect(res.status).toBe(401);
     expect(errorCode(res)).toBe('UNAUTHORIZED');
@@ -612,7 +659,9 @@ describe('PATCH /api/tasks/:id/move (drag and drop)', () => {
     [{ index: 0, boardId: undefined }, 'boardId', 'Board is required'],
     [{ index: 0, boardId: 'nope' }, 'boardId', 'Invalid board id'],
   ])('rejects %j', async (body, path, message) => {
-    const res = await owner.client.patch(`/api/tasks/${a.id}/move`).send({ boardId: board.id, ...body });
+    const res = await owner.client
+      .patch(`/api/tasks/${a.id}/move`)
+      .send({ boardId: board.id, ...body });
 
     expect(res.status).toBe(400);
     expect(res.body.error.details).toContainEqual({ path, message });
@@ -670,7 +719,9 @@ describe('PATCH /api/tasks/:id/move (drag and drop)', () => {
     expect(res.body.task).toMatchObject({ id: a.id, boardId: other.id, order: 1000 });
     const all = await owner.client.get('/api/tasks');
     const byBoard = (id: string) =>
-      all.body.tasks.filter((t: { boardId: string }) => t.boardId === id).map((t: { title: string }) => t.title);
+      all.body.tasks
+        .filter((t: { boardId: string }) => t.boardId === id)
+        .map((t: { title: string }) => t.title);
     expect(byBoard(board.id)).toEqual(['B', 'C']);
     expect(byBoard(other.id)).toEqual(['A']);
   });

@@ -23,7 +23,11 @@ export async function updateName(userId: string, input: UpdateNameInput) {
 
 export async function uploadAvatar(userId: string, file: { buffer: Buffer; mimetype: string }) {
   if (!cloudinaryEnabled) {
-    throw new AppError(503, 'AVATAR_UNAVAILABLE', 'Avatar uploads are not configured on the server');
+    throw new AppError(
+      503,
+      'AVATAR_UNAVAILABLE',
+      'Avatar uploads are not configured on the server',
+    );
   }
   if (!ALLOWED_TYPES.includes(file.mimetype)) {
     throw new AppError(400, 'INVALID_IMAGE', 'Please upload a JPG, PNG or WEBP image');

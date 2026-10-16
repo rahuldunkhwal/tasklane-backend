@@ -21,7 +21,8 @@ export function passwordResetEmail(to: string, link: string, minutesValid: numbe
         `This link is valid for ${minutesValid} minutes.`,
       ],
       button: { label: 'Choose a new password', href: link },
-      footnote: "If you didn't ask for this, you can ignore this email. Your password won't change.",
+      footnote:
+        "If you didn't ask for this, you can ignore this email. Your password won't change.",
     }),
   };
 }

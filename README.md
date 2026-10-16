@@ -29,36 +29,37 @@ curl http://localhost:4000/api/health
 
 ## Scripts
 
-| Script              | What it does                                 |
-| ------------------- | -------------------------------------------- |
-| `npm run dev`       | Start in watch mode (restarts on save)       |
-| `npm run build`     | Compile TypeScript from `src/` to `dist/`    |
-| `npm start`         | Run the compiled build (production)          |
-| `npm run typecheck` | Type-check without emitting files            |
-| `npm run lint`      | ESLint                                       |
-| `npm test`          | API tests, once (see **Tests** below)        |
-| `npm run test:watch`| API tests, re-run on save                    |
-| `npm run format`    | Format all files with Prettier               |
-| `npm run db:up`     | Start the MongoDB container                  |
-| `npm run db:down`   | Stop and remove the container (data is kept) |
-| `npm run db:logs`   | Follow MongoDB logs                          |
+| Script                 | What it does                                 |
+| ---------------------- | -------------------------------------------- |
+| `npm run dev`          | Start in watch mode (restarts on save)       |
+| `npm run build`        | Compile TypeScript from `src/` to `dist/`    |
+| `npm start`            | Run the compiled build (production)          |
+| `npm run typecheck`    | Type-check without emitting files            |
+| `npm run lint`         | ESLint                                       |
+| `npm test`             | API tests, once (see **Tests** below)        |
+| `npm run test:watch`   | API tests, re-run on save                    |
+| `npm run format`       | Format all files with Prettier               |
+| `npm run format:check` | Fail if any file isn't Prettier-formatted    |
+| `npm run db:up`        | Start the MongoDB container                  |
+| `npm run db:down`      | Stop and remove the container (data is kept) |
+| `npm run db:logs`      | Follow MongoDB logs                          |
 
 ## Environment variables
 
 Validated at startup by `src/config/env.ts`: the server refuses to start if any value is missing or invalid.
 
-| Variable         | Example                               | Notes                                                                                        |
-| ---------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `NODE_ENV`       | `development`                         | `development` \| `test` \| `production`                                                      |
-| `PORT`           | `4000`                                | Defaults to 4000                                                                             |
-| `MONGODB_URI`    | `mongodb://127.0.0.1:27017/taskboard` | Required. Atlas uses `mongodb+srv://...`                                                     |
-| `CLIENT_ORIGIN`  | `http://localhost:5173`               | Frontend origin: allowed by CORS and used to build the links in reset/invite emails. Set to the deployed frontend URL in production |
-| `JWT_SECRET`     | 96 random hex characters              | Required, min 32 chars. Signs login JWTs                                                     |
-| `SENDGRID_API_KEY` | `SG....`                            | Optional in development (emails are printed in the terminal instead). Required in production |
-| `MAIL_FROM`      | `Tasklane <you@gmail.com>`            | Sender address. Must exactly match a sender verified in SendGrid (Single Sender)             |
-| `CLOUDINARY_CLOUD_NAME` | `abcd1234`                     | Optional. Profile pictures are stored in Cloudinary (free tier). Without the three values the app runs, but avatar upload answers `503 AVATAR_UNAVAILABLE` |
-| `CLOUDINARY_API_KEY`    | `123456789012345`              | Optional (see above)                                                                         |
-| `CLOUDINARY_API_SECRET` | `s3cr3t…`                      | Optional (see above). Keep it out of git                                                     |
+| Variable                | Example                               | Notes                                                                                                                                                      |
+| ----------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`              | `development`                         | `development` \| `test` \| `production`                                                                                                                    |
+| `PORT`                  | `4000`                                | Defaults to 4000                                                                                                                                           |
+| `MONGODB_URI`           | `mongodb://127.0.0.1:27017/taskboard` | Required. Atlas uses `mongodb+srv://...`                                                                                                                   |
+| `CLIENT_ORIGIN`         | `http://localhost:5173`               | Frontend origin: allowed by CORS and used to build the links in reset/invite emails. Set to the deployed frontend URL in production                        |
+| `JWT_SECRET`            | 96 random hex characters              | Required, min 32 chars. Signs login JWTs                                                                                                                   |
+| `SENDGRID_API_KEY`      | `SG....`                              | Optional in development (emails are printed in the terminal instead). Required in production                                                               |
+| `MAIL_FROM`             | `Tasklane <you@gmail.com>`            | Sender address. Must exactly match a sender verified in SendGrid (Single Sender)                                                                           |
+| `CLOUDINARY_CLOUD_NAME` | `abcd1234`                            | Optional. Profile pictures are stored in Cloudinary (free tier). Without the three values the app runs, but avatar upload answers `503 AVATAR_UNAVAILABLE` |
+| `CLOUDINARY_API_KEY`    | `123456789012345`                     | Optional (see above)                                                                                                                                       |
+| `CLOUDINARY_API_SECRET` | `s3cr3t…`                             | Optional (see above). Keep it out of git                                                                                                                   |
 
 ## API
 
@@ -102,18 +103,18 @@ with them. Deleting a board also deletes its tasks (and its shares).
 
 ### Sharing (view-only, by email)
 
-| Method | Path                             | Description                                                                                                                                                                                      |
-| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], invites: [{email, createdAt}]}` (viewers + pending invites)  |
+| Method | Path                             | Description                                                                                                                  |
+| ------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/boards/:id/shares`         | Owner only → `200 {shares: [{userId, name, email}], invites: [{email, createdAt}]}` (viewers + pending invites)              |
 | POST   | `/api/boards/:id/invites`        | Owner only. Body `{email}` → `200 {shares, invites}`. `400 CANNOT_SHARE_WITH_SELF`, `409 ALREADY_SHARED`, `502 EMAIL_FAILED` |
-| DELETE | `/api/boards/:id/invites/:email` | Owner only → `204`: withdraws a pending invite (its link stops working). `404 INVITE_NOT_FOUND`                   |
-| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`: removes a viewer. `404 SHARE_NOT_FOUND`                                                      |
+| DELETE | `/api/boards/:id/invites/:email` | Owner only → `204`: withdraws a pending invite (its link stops working). `404 INVITE_NOT_FOUND`                              |
+| DELETE | `/api/boards/:id/shares/:userId` | Owner only → `204`: removes a viewer. `404 SHARE_NOT_FOUND`                                                                  |
 
 **How sharing works — invite, then accept.** The owner invites an email address; a pending invite **bound to that email** is stored on the board and an email with `CLIENT_ORIGIN/invite/<token>?email=<address>` is sent. Nobody is added to a board without their consent: access is granted only when that person opens the link and accepts while logged in with that exact email (signing up first if they have no account yet). Sending again replaces the earlier invite (only the latest link works).
 
-| Method | Path                         | Description                                                                                                                                                              |
-| ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/invites/:token`        | **Public** → `200 {boardTitle, inviterName, invitedEmail}`. `404 INVALID_INVITE`                                                                                         |
+| Method | Path                         | Description                                                                                                                                                                                 |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/invites/:token`        | **Public** → `200 {boardTitle, inviterName, invitedEmail}`. `404 INVALID_INVITE`                                                                                                            |
 | POST   | `/api/invites/:token/accept` | Requires login → `200 {boardId}`: joins as a viewer. Only the account whose email matches `invitedEmail` may accept (`403 INVITE_EMAIL_MISMATCH`); the link then stops working (single-use) |
 
 There is deliberately **no "anyone with the link" sharing**: every invite is tied to the address it was sent to and checked against the logged-in user's email on accept, so a forwarded link or a sign-up with a different email cannot gain access.
@@ -171,11 +172,11 @@ today>&dueTo=<end of today>` in the user's time zone, so the server never needs 
 
 ### Profile (all require login)
 
-| Method | Path                   | Description                                                                                                                                                   |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PATCH  | `/api/users/me`        | Body `{name}` (1–50 chars) → `200 {user}`                                                                                                                     |
+| Method | Path                   | Description                                                                                                                                                                                                          |
+| ------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PATCH  | `/api/users/me`        | Body `{name}` (1–50 chars) → `200 {user}`                                                                                                                                                                            |
 | POST   | `/api/users/me/avatar` | `multipart/form-data`, field `avatar` (JPG/PNG/WEBP, ≤ 2 MB) → `200 {user}` with the new `avatarUrl`. `400 NO_FILE` / `INVALID_IMAGE`, `413 PAYLOAD_TOO_LARGE`, `503 AVATAR_UNAVAILABLE` (Cloudinary not configured) |
-| DELETE | `/api/users/me/avatar` | `200 {user}` with `avatarUrl: null`                                                                                                                           |
+| DELETE | `/api/users/me/avatar` | `200 {user}` with `avatarUrl: null`                                                                                                                                                                                  |
 
 The picture is uploaded server-side to Cloudinary and resized to 256×256 WebP (one image per user: re-uploading
 replaces it, removing deletes it), so the API only ever stores a URL. Changing the password is
@@ -199,7 +200,7 @@ Every error has the same shape:
 `INVALID_JSON`, `INVALID_BODY`, `PAYLOAD_TOO_LARGE`, `CONFLICT`, `EMAIL_TAKEN`, `INVALID_CREDENTIALS`, `UNAUTHORIZED`,
 `INVALID_RESET_TOKEN`, `INVALID_CURRENT_PASSWORD`, `BOARD_NOT_FOUND`, `TASK_NOT_FOUND`, `READ_ONLY`, `ALREADY_SHARED`,
 `CANNOT_SHARE_WITH_SELF`, `SHARE_NOT_FOUND`, `INVALID_INVITE`, `INVITE_EMAIL_MISMATCH`, `INVITE_NOT_FOUND`, `EMAIL_FAILED`,
-`NO_FILE`, `INVALID_IMAGE`, `INVALID_UPLOAD`, `AVATAR_UNAVAILABLE`, `INTERNAL_ERROR`.
+`NO_FILE`, `INVALID_IMAGE`, `INVALID_UPLOAD`, `AVATAR_UNAVAILABLE`, `BAD_REQUEST` (other body-parser errors), `INTERNAL_ERROR`.
 
 ## Tests
 
@@ -226,7 +227,8 @@ src/
 ├─ modules/<feature>/     one folder per feature (health, auth, users, ...)
 ├─ middleware/            notFound, errorHandler, validate, requireAuth
 ├─ types/express.d.ts     adds req.user / req.sessionId to Express's Request type
-└─ utils/                 AppError (HTTP status + stable code), password (bcrypt), email (SendGrid)
+└─ utils/                 AppError (HTTP status + stable code), zod (shared field rules), password (bcrypt),
+                          email (SendGrid) + email-template (branded HTML)
 
 modules/<feature>/
 ├─ <feature>.routes.ts      URL → middleware → controller

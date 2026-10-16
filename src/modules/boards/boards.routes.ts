@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { validateBody } from '../../middleware/validate.js';
 import * as boardsController from './boards.controller.js';
-import { createBoardSchema, shareBoardSchema, updateBoardSchema } from './boards.schema.js';
+import { createBoardSchema, inviteSchema, updateBoardSchema } from './boards.schema.js';
 
 export const boardsRouter = Router();
 
@@ -19,5 +19,5 @@ boardsRouter.delete('/:id', boardsController.remove);
 // invited person accepts the emailed invite (see /api/invites); the owner can revoke it here.
 boardsRouter.get('/:id/shares', boardsController.sharing);
 boardsRouter.delete('/:id/shares/:userId', boardsController.unshare);
-boardsRouter.post('/:id/invites', validateBody(shareBoardSchema), boardsController.sendInvite);
+boardsRouter.post('/:id/invites', validateBody(inviteSchema), boardsController.sendInvite);
 boardsRouter.delete('/:id/invites/:email', boardsController.removeInvite);

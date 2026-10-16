@@ -11,9 +11,9 @@ const titleRule = requiredString('Title')
 export const createBoardSchema = z.object({ title: titleRule });
 export const updateBoardSchema = z.object({ title: titleRule });
 
-// Share by email (trimmed + lowercased, so "Bob@Mail.com" finds bob@mail.com)
-export const shareBoardSchema = z.object({ email: emailRule });
+// Invite by email (trimmed + lowercased, so "Bob@Mail.com" and "bob@mail.com" are the same person)
+export const inviteSchema = z.object({ email: emailRule });
 
 export type CreateBoardInput = z.infer<typeof createBoardSchema>;
 export type UpdateBoardInput = z.infer<typeof updateBoardSchema>;
-export type ShareBoardInput = z.infer<typeof shareBoardSchema>;
+export type InviteInput = z.infer<typeof inviteSchema>;

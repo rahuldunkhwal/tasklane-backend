@@ -32,7 +32,7 @@ export function toErrorResponse(err: unknown) {
     return reply(400, 'INVALID_UPLOAD', err.message);
   }
 
-  // 2. Request validation failed (zod schemas, used from Phase 1)
+  // 2. Request validation failed (zod schemas)
   if (err instanceof ZodError) {
     const details = err.issues.map((issue) => ({
       path: issue.path.map(String).join('.'),

@@ -10,9 +10,6 @@ coverage/
 .env.*
 !.env.example
 
-# User-uploaded files (profile pictures) are runtime data, not source code
-uploads/
-
 # Logs
 *.log
 npm-debug.log*
